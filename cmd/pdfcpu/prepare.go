@@ -6,8 +6,8 @@ import (
 	"log"
 	"os"
 
-	"github.com/hhrutter/pdfcpu/pkg/api"
-	"github.com/hhrutter/pdfcpu/pkg/pdfcpu"
+	"github.com/charleswklau/pdfcpu/pkg/api"
+	"github.com/charleswklau/pdfcpu/pkg/pdfcpu"
 )
 
 func prepareValidateCommand(config *pdfcpu.Configuration) *api.Command {

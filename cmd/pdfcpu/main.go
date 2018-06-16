@@ -8,9 +8,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/hhrutter/pdfcpu/pkg/api"
-	PDFCPULog "github.com/hhrutter/pdfcpu/pkg/log"
-	"github.com/hhrutter/pdfcpu/pkg/pdfcpu"
+	"github.com/charleswklau/pdfcpu/pkg/api"
+	PDFCPULog "github.com/charleswklau/pdfcpu/pkg/log"
+	"github.com/charleswklau/pdfcpu/pkg/pdfcpu"
 )
 
 var (

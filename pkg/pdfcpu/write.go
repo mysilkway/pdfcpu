@@ -1,7 +1,6 @@
 package pdfcpu
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/hex"
 	"fmt"
@@ -9,7 +8,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/hhrutter/pdfcpu/pkg/log"
+	"bufio"
+	"github.com/charleswklau/pdfcpu/pkg/log"
 	"github.com/pkg/errors"
 )
 

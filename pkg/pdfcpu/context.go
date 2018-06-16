@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/hhrutter/pdfcpu/pkg/log"
+	"github.com/charleswklau/pdfcpu/pkg/log"
 )
 
 // PDFContext represents the context for processing PDF files.
