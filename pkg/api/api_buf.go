@@ -2,19 +2,14 @@ package api
 
 import (
 	"bytes"
-	"fmt"
 	"github.com/charleswklau/pdfcpu/pkg/log"
 	"github.com/charleswklau/pdfcpu/pkg/pdfcpu"
 	"github.com/pkg/errors"
 	"time"
 )
 
-// Write generates a PDF file for a given PDFContext.
+// WriteBuf generates a PDF file bytes for a given PDFContext.
 func WriteBuf(ctx *pdfcpu.PDFContext) (*bytes.Buffer, error) {
-
-	fmt.Printf("writing %s ...\n", ctx.Write.DirName+ctx.Write.FileName)
-	//logInfoAPI.Printf("writing to %s..\n", fileName)
-
 	b, err := pdfcpu.WritePDFBuf(ctx)
 	if err != nil {
 		return nil, errors.Wrap(err, "Write failed.")
@@ -30,6 +25,9 @@ func WriteBuf(ctx *pdfcpu.PDFContext) (*bytes.Buffer, error) {
 	return b, nil
 }
 
+// Merge some PDF files together and write the result to the buffer.
+// This corresponds to concatenating these files in the order specified by filesIn.
+// The first entry of filesIn serves as the destination xRefTable where all the remaining files gets merged into.
 func MergeAsBuf(filesIn []string, config *pdfcpu.Configuration) (*bytes.Buffer, error) {
 
 	ctxDest, _, _, err := readAndValidate(filesIn[0], config, time.Now())
@@ -60,11 +58,6 @@ func MergeAsBuf(filesIn []string, config *pdfcpu.Configuration) (*bytes.Buffer, 
 	if err != nil {
 		return nil, err
 	}
-
-	ctxDest.Write.Command = "Merge"
-
-	ctxDest.Write.DirName = ""
-	ctxDest.Write.FileName = ""
 
 	b, err := WriteBuf(ctxDest)
 	if err != nil {

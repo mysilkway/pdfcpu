@@ -6,6 +6,7 @@ import (
 	"github.com/charleswklau/pdfcpu/pkg/log"
 )
 
+// WritePDFBuf generates a PDF file buffer for the cross reference table contained in PDFContext.
 func WritePDFBuf(ctx *PDFContext) (*bytes.Buffer, error) {
 
 	b := bytes.NewBuffer([]byte{})
