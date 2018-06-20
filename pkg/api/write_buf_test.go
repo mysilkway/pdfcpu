@@ -11,10 +11,7 @@ func TestWriteBuf(t *testing.T) {
 	test1 := filepath.Join(os.Getenv("GOPATH"), "src/github.com/charleswklau/pdfcpu/pkg/api/test", "test1.pdf")
 	test2 := filepath.Join(os.Getenv("GOPATH"), "src/github.com/charleswklau/pdfcpu/pkg/api/test", "test2.pdf")
 
-	ob := pdfBufp.Get()
-	defer pdfBufp.Put(ob)
-
-	b, err := MergeAsBuf([]string{test1, test2}, nil, ob)
+	b, err := MergeAsBuf([]string{test1, test2}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -22,11 +19,20 @@ func TestWriteBuf(t *testing.T) {
 	if err = testWriteIntoDisk(b); err != nil {
 		t.Fatal(err)
 	}
-
 }
 
 func testWriteIntoDisk(buf *bytes.Buffer) error {
-	fp, err := os.OpenFile(filepath.Join(os.Getenv("GOPATH"), "src/github.com/charleswklau/pdfcpu/pkg/api/test", "test-out.pdf"), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0666)
+
+	outputFile := filepath.Join(os.Getenv("GOPATH"), "src/github.com/charleswklau/pdfcpu/pkg/api/test", "test-out.pdf")
+
+	f, err := os.Stat(outputFile)
+	if f != nil {
+		if err := os.Remove(outputFile); err != nil{
+			return err
+		}
+	}
+
+	fp, err := os.OpenFile(outputFile, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0666)
 	if err != nil {
 		return err
 	}

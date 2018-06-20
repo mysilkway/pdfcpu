@@ -5,22 +5,17 @@ import (
 	"fmt"
 	"github.com/charleswklau/pdfcpu/pkg/log"
 	"github.com/charleswklau/pdfcpu/pkg/pdfcpu"
-	"github.com/oxtoacart/bpool"
 	"github.com/pkg/errors"
 	"time"
 )
 
-var (
-	pdfBufp = bpool.NewBufferPool(512)
-)
-
 // Write generates a PDF file for a given PDFContext.
-func WriteBuf(ctx *pdfcpu.PDFContext, ob *bytes.Buffer) (*bytes.Buffer, error) {
+func WriteBuf(ctx *pdfcpu.PDFContext) (*bytes.Buffer, error) {
 
 	fmt.Printf("writing %s ...\n", ctx.Write.DirName+ctx.Write.FileName)
 	//logInfoAPI.Printf("writing to %s..\n", fileName)
 
-	b, err := pdfcpu.WritePDFBuf(ctx, ob)
+	b, err := pdfcpu.WritePDFBuf(ctx)
 	if err != nil {
 		return nil, errors.Wrap(err, "Write failed.")
 	}
@@ -35,7 +30,7 @@ func WriteBuf(ctx *pdfcpu.PDFContext, ob *bytes.Buffer) (*bytes.Buffer, error) {
 	return b, nil
 }
 
-func MergeAsBuf(filesIn []string, config *pdfcpu.Configuration, ob *bytes.Buffer) (*bytes.Buffer, error) {
+func MergeAsBuf(filesIn []string, config *pdfcpu.Configuration) (*bytes.Buffer, error) {
 
 	ctxDest, _, _, err := readAndValidate(filesIn[0], config, time.Now())
 	if err != nil {
@@ -71,12 +66,12 @@ func MergeAsBuf(filesIn []string, config *pdfcpu.Configuration, ob *bytes.Buffer
 	ctxDest.Write.DirName = ""
 	ctxDest.Write.FileName = ""
 
-	_, err = WriteBuf(ctxDest, ob)
+	b, err := WriteBuf(ctxDest)
 	if err != nil {
 		return nil, err
 	}
 
 	log.Stats.Printf("XRefTable:\n%s\n", ctxDest)
 
-	return ob, nil
+	return b, nil
 }

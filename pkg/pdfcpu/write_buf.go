@@ -4,16 +4,11 @@ import (
 	"bufio"
 	"bytes"
 	"github.com/charleswklau/pdfcpu/pkg/log"
-	"github.com/oxtoacart/bpool"
 )
 
-var (
-	pdfBufp = bpool.NewBufferPool(512)
-)
+func WritePDFBuf(ctx *PDFContext) (*bytes.Buffer, error) {
 
-func WritePDFBuf(ctx *PDFContext, ob *bytes.Buffer) (*bytes.Buffer, error) {
-
-	b := ob
+	b := bytes.NewBuffer([]byte{})
 
 	ctx.Write.Writer = bufio.NewWriter(b)
 
@@ -23,7 +18,7 @@ func WritePDFBuf(ctx *PDFContext, ob *bytes.Buffer) (*bytes.Buffer, error) {
 	}
 
 	// Since we support PDF Collections (since V1.7) for file attachments
-	// we need to always generate V1.7 PDF filess.
+	// we need to always generate V1.7 PDF files.
 	err = writeHeader(ctx.Write, V17)
 	if err != nil {
 		return nil, err
