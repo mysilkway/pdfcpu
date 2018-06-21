@@ -2,7 +2,6 @@ package api
 
 import (
 	"bytes"
-	"fmt"
 	"github.com/mysilkway/pdfcpu/pkg/log"
 	"github.com/mysilkway/pdfcpu/pkg/pdfcpu"
 	"github.com/pkg/errors"
@@ -159,6 +158,5 @@ func appendFileTo(f *os.File, ctxDest *pdfcpu.PDFContext) error {
 	}
 
 	// Merge the source context into the dest context.
-	fmt.Printf("merging in %s ...\n", f.Name())
 	return pdfcpu.MergeXRefTables(ctxSource, ctxDest)
 }
