@@ -74,8 +74,7 @@ func MergeToBuf(filesIn []string, config *pdfcpu.Configuration) (*bytes.Buffer, 
 // This corresponds to concatenating these files in the order specified by file array.
 // The first entry of files serves as the destination xRefTable where all the remaining files gets merged into.
 func MergeFileToBuf(files []*os.File, config *pdfcpu.Configuration) (*bytes.Buffer, error) {
-
-	ctxDest, _, _, err := readFileAndValidate(files[0], config, time.Now())
+	ctxDest, err := readFileAndValidate(files[0], config)
 	if err != nil {
 		return nil, err
 	}
@@ -114,30 +113,22 @@ func MergeFileToBuf(files []*os.File, config *pdfcpu.Configuration) (*bytes.Buff
 	return b, nil
 }
 
-func readFileAndValidate(f *os.File, config *pdfcpu.Configuration, from1 time.Time) (ctx *pdfcpu.PDFContext, dur1, dur2 float64, err error) {
-
+func readFileAndValidate(f *os.File, config *pdfcpu.Configuration) (ctx *pdfcpu.PDFContext, err error) {
 	ctx, err = ReadFile(f, config)
 	if err != nil {
-		return nil, 0, 0, err
+		return nil, err
 	}
-	dur1 = time.Since(from1).Seconds()
 
-	from2 := time.Now()
-	//fmt.Printf("validating %s ...\n", fileIn)
-	//logInfoAPI.Printf("validating %s..\n", fileIn)
 	err = pdfcpu.ValidateXRefTable(ctx.XRefTable)
 	if err != nil {
-		return nil, 0, 0, err
+		return nil, err
 	}
-	dur2 = time.Since(from2).Seconds()
 
-	return ctx, dur1, dur2, nil
+	return ctx, nil
 }
 
 // ReadFile reads in a PDF file and builds an internal structure holding its cross reference table aka the PDFContext.
 func ReadFile(f *os.File, config *pdfcpu.Configuration) (*pdfcpu.PDFContext, error) {
-
-	//logInfoAPI.Printf("reading %s..\n", fileIn)
 	ctx, err := pdfcpu.ParseFileToPDFContext(f, config)
 	if err != nil {
 		return nil, errors.Wrap(err, "Read failed.")
@@ -152,7 +143,7 @@ func appendFileTo(f *os.File, ctxDest *pdfcpu.PDFContext) error {
 	log.Stats.Printf("appendTo: appending %s to %s\n", f, ctxDest.Read.FileName)
 
 	// Build a PDFContext for fileIn.
-	ctxSource, _, _, err := readFileAndValidate(f, ctxDest.Configuration, time.Now())
+	ctxSource, err := readFileAndValidate(f, ctxDest.Configuration)
 	if err != nil {
 		return err
 	}
