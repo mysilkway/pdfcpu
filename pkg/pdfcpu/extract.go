@@ -3,8 +3,8 @@ package pdfcpu
 import (
 	"strings"
 
-	"github.com/charleswklau/pdfcpu/pkg/filter"
-	"github.com/charleswklau/pdfcpu/pkg/log"
+	"github.com/mysilkway/pdfcpu/pkg/filter"
+	"github.com/mysilkway/pdfcpu/pkg/log"
 	"github.com/pkg/errors"
 )
 

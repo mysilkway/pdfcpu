@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"io"
 
-	"github.com/charleswklau/pdfcpu/pkg/compress/lzw"
-	"github.com/charleswklau/pdfcpu/pkg/log"
+	"github.com/mysilkway/pdfcpu/pkg/compress/lzw"
+	"github.com/mysilkway/pdfcpu/pkg/log"
 	"github.com/pkg/errors"
 )
 

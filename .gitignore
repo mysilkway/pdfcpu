@@ -11,6 +11,4 @@ c.out
 # Stats
 _scripts/*.csv
 
-*.iml
-*.idea
-.idea/codeStyles/Project.xml
+.idea

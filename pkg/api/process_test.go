@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/charleswklau/pdfcpu/pkg/log"
-	"github.com/charleswklau/pdfcpu/pkg/pdfcpu"
+	"github.com/mysilkway/pdfcpu/pkg/log"
+	"github.com/mysilkway/pdfcpu/pkg/pdfcpu"
 )
 
 const outputDir = "testdata/out"

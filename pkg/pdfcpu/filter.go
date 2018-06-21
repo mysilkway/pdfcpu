@@ -6,8 +6,8 @@ import (
 	"bytes"
 	"io"
 
-	"github.com/charleswklau/pdfcpu/pkg/filter"
-	"github.com/charleswklau/pdfcpu/pkg/log"
+	"github.com/mysilkway/pdfcpu/pkg/filter"
+	"github.com/mysilkway/pdfcpu/pkg/log"
 )
 
 func parmsForFilter(d *PDFDict) map[string]int {

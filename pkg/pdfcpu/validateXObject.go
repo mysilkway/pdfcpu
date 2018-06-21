@@ -1,7 +1,7 @@
 package pdfcpu
 
 import (
-	"github.com/charleswklau/pdfcpu/pkg/filter"
+	"github.com/mysilkway/pdfcpu/pkg/filter"
 	"github.com/pkg/errors"
 )
 

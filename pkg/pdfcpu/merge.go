@@ -3,7 +3,7 @@ package pdfcpu
 import (
 	"sort"
 
-	"github.com/charleswklau/pdfcpu/pkg/log"
+	"github.com/mysilkway/pdfcpu/pkg/log"
 )
 
 func patchIndRef(indRef *PDFIndirectRef, lookup map[int]int) {

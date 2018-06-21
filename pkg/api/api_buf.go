@@ -3,8 +3,8 @@ package api
 import (
 	"bytes"
 	"fmt"
-	"github.com/charleswklau/pdfcpu/pkg/log"
-	"github.com/charleswklau/pdfcpu/pkg/pdfcpu"
+	"github.com/mysilkway/pdfcpu/pkg/log"
+	"github.com/mysilkway/pdfcpu/pkg/pdfcpu"
 	"github.com/pkg/errors"
 	"os"
 	"time"

@@ -3,14 +3,29 @@ package api
 import (
 	"bytes"
 	"os"
+	"path"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
+var (
+	pkgDir string
+)
+
+func init() {
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		panic("No caller information")
+	}
+
+	pkgDir = path.Dir(filename)
+}
+
 // it is testing the MergeToBuf function
-func TestMergeToeBuf(t *testing.T) {
-	test1 := filepath.Join(os.Getenv("GOPATH"), "src/github.com/charleswklau/pdfcpu/pkg/api/test", "test1.pdf")
-	test2 := filepath.Join(os.Getenv("GOPATH"), "src/github.com/charleswklau/pdfcpu/pkg/api/test", "test2.pdf")
+func TestMergeToBuf(t *testing.T) {
+	test1 := filepath.Join(pkgDir, "testdata/test1.pdf")
+	test2 := filepath.Join(pkgDir, "testdata/test2.pdf")
 
 	b, err := MergeToBuf([]string{test1, test2}, nil)
 	if err != nil {
@@ -24,8 +39,8 @@ func TestMergeToeBuf(t *testing.T) {
 
 // it is testing the MergeFileToBuf function
 func TestMergeFilesToBuf(t *testing.T) {
-	test1 := filepath.Join(os.Getenv("GOPATH"), "src/github.com/charleswklau/pdfcpu/pkg/api/test", "test1.pdf")
-	test2 := filepath.Join(os.Getenv("GOPATH"), "src/github.com/charleswklau/pdfcpu/pkg/api/test", "test2.pdf")
+	test1 := filepath.Join(pkgDir, "testdata/test1.pdf")
+	test2 := filepath.Join(pkgDir, "testdata/test2.pdf")
 
 	file1, err := os.OpenFile(test1, os.O_RDONLY, 0666)
 	if err != nil {
@@ -51,8 +66,7 @@ func TestMergeFilesToBuf(t *testing.T) {
 
 // helper function write the buffer into the disk
 func testWriteIntoDisk(buf *bytes.Buffer) error {
-
-	outputFile := filepath.Join(os.Getenv("GOPATH"), "src/github.com/charleswklau/pdfcpu/pkg/api/test", "test-out.pdf")
+	outputFile := filepath.Join(pkgDir, "testdata/test-out.pdf")
 
 	// remove file when it is already exist
 	f, err := os.Stat(outputFile)

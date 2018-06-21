@@ -3,7 +3,7 @@ package pdfcpu
 import (
 	"bufio"
 	"bytes"
-	"github.com/charleswklau/pdfcpu/pkg/log"
+	"github.com/mysilkway/pdfcpu/pkg/log"
 )
 
 // WritePDFBuf generates a PDF file buffer for the cross reference table contained in PDFContext.

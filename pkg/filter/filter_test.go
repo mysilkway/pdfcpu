@@ -7,7 +7,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/charleswklau/pdfcpu/pkg/filter"
+	"github.com/mysilkway/pdfcpu/pkg/filter"
 )
 
 // Encode a test string twice with same filter
