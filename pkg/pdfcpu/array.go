@@ -1,3 +1,19 @@
+/*
+Copyright 2018 The pdfcpu Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+	http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package pdfcpu
 
 import (
@@ -8,65 +24,78 @@ import (
 	"github.com/mysilkway/pdfcpu/pkg/log"
 )
 
-// PDFArray represents a PDF array object.
-type PDFArray []PDFObject
+// Array represents a PDF array object.
+type Array []Object
 
-// NewStringArray returns a PDFArray with PDFStringLiteral entries.
-func NewStringArray(sVars ...string) PDFArray {
+// NewStringArray returns a PDFArray with StringLiteral entries.
+func NewStringArray(sVars ...string) Array {
 
-	a := PDFArray{}
-
-	for _, s := range sVars {
-		a = append(a, PDFStringLiteral(s))
-	}
-
-	return a
-}
-
-// NewNameArray returns a PDFArray with PDFName entries.
-func NewNameArray(sVars ...string) PDFArray {
-
-	a := PDFArray{}
+	a := Array{}
 
 	for _, s := range sVars {
-		a = append(a, PDFName(s))
+		a = append(a, StringLiteral(s))
 	}
 
 	return a
 }
 
-// NewNumberArray returns a PDFArray with PDFFloat entries.
-func NewNumberArray(fVars ...float64) PDFArray {
+// NewNameArray returns a PDFArray with Name entries.
+func NewNameArray(sVars ...string) Array {
 
-	a := PDFArray{}
+	a := Array{}
+
+	for _, s := range sVars {
+		a = append(a, Name(s))
+	}
+
+	return a
+}
+
+// NewNumberArray returns a PDFArray with Float entries.
+func NewNumberArray(fVars ...float64) Array {
+
+	a := Array{}
 
 	for _, f := range fVars {
-		a = append(a, PDFFloat(f))
+		a = append(a, Float(f))
 	}
 
 	return a
 }
 
-// NewIntegerArray returns a PDFArray with PDFInteger entries.
-func NewIntegerArray(fVars ...int) PDFArray {
+// NewIntegerArray returns a PDFArray with Integer entries.
+func NewIntegerArray(fVars ...int) Array {
 
-	a := PDFArray{}
+	a := Array{}
 
 	for _, f := range fVars {
-		a = append(a, PDFInteger(f))
+		a = append(a, Integer(f))
 	}
 
 	return a
 }
 
-func (array PDFArray) indentedString(level int) string {
+func (a Array) contains(o Object, xRefTable *XRefTable) (bool, error) {
+	for _, e := range a {
+		ok, err := equalObjects(e, o, xRefTable)
+		if err != nil {
+			return false, err
+		}
+		if ok {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (a Array) indentedString(level int) string {
 
 	logstr := []string{"["}
 	tabstr := strings.Repeat("\t", level)
 	first := true
 	sepstr := ""
 
-	for _, entry := range array {
+	for _, entry := range a {
 
 		if first {
 			first = false
@@ -75,14 +104,14 @@ func (array PDFArray) indentedString(level int) string {
 			sepstr = " "
 		}
 
-		if subdict, ok := entry.(PDFDict); ok {
+		if subdict, ok := entry.(Dict); ok {
 			dictstr := subdict.indentedString(level + 1)
 			logstr = append(logstr, fmt.Sprintf("\n%[1]s%[2]s\n%[1]s", tabstr, dictstr))
 			first = true
 			continue
 		}
 
-		if array, ok := entry.(PDFArray); ok {
+		if array, ok := entry.(Array); ok {
 			arrstr := array.indentedString(level + 1)
 			logstr = append(logstr, fmt.Sprintf("%s%s", sepstr, arrstr))
 			continue
@@ -96,19 +125,19 @@ func (array PDFArray) indentedString(level int) string {
 	return strings.Join(logstr, "")
 }
 
-func (array PDFArray) String() string {
-	return array.indentedString(1)
+func (a Array) String() string {
+	return a.indentedString(1)
 }
 
 // PDFString returns a string representation as found in and written to a PDF file.
-func (array PDFArray) PDFString() string {
+func (a Array) PDFString() string {
 
 	logstr := []string{}
 	logstr = append(logstr, "[")
 	first := true
 	var sepstr string
 
-	for _, entry := range array {
+	for _, entry := range a {
 
 		if first {
 			first = false
@@ -122,60 +151,56 @@ func (array PDFArray) PDFString() string {
 			continue
 		}
 
-		subdict, ok := entry.(PDFDict)
+		d, ok := entry.(Dict)
 		if ok {
-			dictStr := subdict.PDFString()
-			logstr = append(logstr, fmt.Sprintf("%s", dictStr))
+			logstr = append(logstr, fmt.Sprintf("%s", d.PDFString()))
 			continue
 		}
 
-		array, ok := entry.(PDFArray)
+		a, ok := entry.(Array)
 		if ok {
-			arrstr := array.PDFString()
-			logstr = append(logstr, fmt.Sprintf("%s", arrstr))
+			logstr = append(logstr, fmt.Sprintf("%s", a.PDFString()))
 			continue
 		}
 
-		indRef, ok := entry.(PDFIndirectRef)
+		ir, ok := entry.(IndirectRef)
 		if ok {
-			indRefstr := indRef.PDFString()
-			logstr = append(logstr, fmt.Sprintf("%s%s", sepstr, indRefstr))
+			logstr = append(logstr, fmt.Sprintf("%s%s", sepstr, ir.PDFString()))
 			continue
 		}
 
-		name, ok := entry.(PDFName)
+		n, ok := entry.(Name)
 		if ok {
-			namestr := name.PDFString()
-			logstr = append(logstr, fmt.Sprintf("%s", namestr))
+			logstr = append(logstr, fmt.Sprintf("%s", n.PDFString()))
 			continue
 		}
 
-		i, ok := entry.(PDFInteger)
+		i, ok := entry.(Integer)
 		if ok {
-			logstr = append(logstr, fmt.Sprintf("%s%s", sepstr, i.String()))
+			logstr = append(logstr, fmt.Sprintf("%s%s", sepstr, i.PDFString()))
 			continue
 		}
 
-		f, ok := entry.(PDFFloat)
+		f, ok := entry.(Float)
 		if ok {
-			logstr = append(logstr, fmt.Sprintf("%s%s", sepstr, f.String()))
+			logstr = append(logstr, fmt.Sprintf("%s%s", sepstr, f.PDFString()))
 			continue
 		}
 
-		b, ok := entry.(PDFBoolean)
+		b, ok := entry.(Boolean)
 		if ok {
-			logstr = append(logstr, fmt.Sprintf("%s%s", sepstr, b.String()))
+			logstr = append(logstr, fmt.Sprintf("%s%s", sepstr, b.PDFString()))
 			continue
 		}
-		sl, ok := entry.(PDFStringLiteral)
+		sl, ok := entry.(StringLiteral)
 		if ok {
-			logstr = append(logstr, fmt.Sprintf("%s%s", sepstr, sl.String()))
+			logstr = append(logstr, fmt.Sprintf("%s%s", sepstr, sl.PDFString()))
 			continue
 		}
 
-		hl, ok := entry.(PDFHexLiteral)
+		hl, ok := entry.(HexLiteral)
 		if ok {
-			logstr = append(logstr, fmt.Sprintf("%s%s", sepstr, hl.String()))
+			logstr = append(logstr, fmt.Sprintf("%s%s", sepstr, hl.PDFString()))
 			continue
 		}
 

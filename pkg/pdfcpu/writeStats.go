@@ -1,3 +1,19 @@
+/*
+Copyright 2018 The pdfcpu Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+	http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package pdfcpu
 
 import (
@@ -10,7 +26,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-func logWriteStats(ctx *PDFContext) {
+func logWriteStats(ctx *Context) {
 
 	xRefTable := ctx.XRefTable
 
@@ -78,13 +94,13 @@ func statsHeadLine() *string {
 	return &hl
 }
 
-func statsLine(ctx *PDFContext) *string {
+func statsLine(ctx *Context) *string {
 
 	xRefTable := ctx.XRefTable
 
-	version := VersionString(*xRefTable.HeaderVersion)
+	version := xRefTable.HeaderVersion.String()
 	if xRefTable.RootVersion != nil {
-		version = fmt.Sprintf("%s,%s", version, VersionString(*xRefTable.RootVersion))
+		version = fmt.Sprintf("%s,%s", version, xRefTable.RootVersion.String())
 	}
 
 	sourceFileSize := ctx.Read.FileSize
@@ -215,7 +231,7 @@ func statsLine(ctx *PDFContext) *string {
 }
 
 // AppendStatsFile appends a stats line for this xRefTable to the configured csv file name.
-func AppendStatsFile(ctx *PDFContext) error {
+func AppendStatsFile(ctx *Context) error {
 
 	fileName := ctx.StatsFileName
 
