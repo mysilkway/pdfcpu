@@ -1,19 +1,3 @@
-/*
-Copyright 2018 The pdfcpu Authors.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-	http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
-
 package pdfcpu
 
 import (
@@ -26,7 +10,7 @@ type FontObject struct {
 	ResourceNames []string
 	Prefix        string
 	FontName      string
-	FontDict      Dict
+	FontDict      *PDFDict
 	Data          []byte
 	Extension     string
 }
@@ -70,7 +54,7 @@ func (fo FontObject) Encoding() string {
 	pdfObject, found := fo.FontDict.Find("Encoding")
 	if found {
 		switch enc := pdfObject.(type) {
-		case Name:
+		case PDFName:
 			encoding = enc.String()
 		default:
 			encoding = "Custom"
@@ -101,8 +85,8 @@ func (fo FontObject) String() string {
 // ImageObject represents an image used in a PDF file.
 type ImageObject struct {
 	ResourceNames []string
-	ImageDict     *StreamDict
-	//Extension     string
+	ImageDict     *PDFStreamDict
+	Extension     string
 }
 
 // AddResourceName adds a resourceName to this imageObject's ResourceNames dict.
@@ -125,9 +109,9 @@ func (io ImageObject) ResourceNamesString() string {
 }
 
 // Data returns the raw data belonging to this image object.
-// func (io ImageObject) Data() []byte {
-// 	if io.Extension == "png" {
-// 		return io.ImageDict.Content
-// 	}
-// 	return io.ImageDict.Raw
-// }
+func (io ImageObject) Data() []byte {
+	if io.Extension == "png" {
+		return io.ImageDict.Content
+	}
+	return io.ImageDict.Raw
+}

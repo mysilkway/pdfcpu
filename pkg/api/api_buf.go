@@ -2,15 +2,15 @@ package api
 
 import (
 	"bytes"
-	"github.com/charleswklau/pdfcpu/pkg/log"
-	"github.com/charleswklau/pdfcpu/pkg/pdfcpu"
+	"github.com/mysilkway/pdfcpu/pkg/log"
+	"github.com/mysilkway/pdfcpu/pkg/pdfcpu"
 	"github.com/pkg/errors"
 	"os"
 	"time"
 )
 
-// WriteBuf generates a PDF file bytes for a given Context.
-func WriteBuf(ctx *pdfcpu.Context) (*bytes.Buffer, error) {
+// WriteBuf generates a PDF file bytes for a given PDFContext.
+func WriteBuf(ctx *pdfcpu.PDFContext) (*bytes.Buffer, error) {
 	b, err := pdfcpu.WritePDFBuf(ctx)
 	if err != nil {
 		return nil, errors.Wrap(err, "Write failed.")
@@ -37,7 +37,7 @@ func MergeToBuf(filesIn []string, config *pdfcpu.Configuration) (*bytes.Buffer, 
 	}
 
 	if ctxDest.XRefTable.Version() < pdfcpu.V15 {
-		v, _ := pdfcpu.PDFVersion("1.5")
+		v, _ := pdfcpu.Version("1.5")
 		ctxDest.XRefTable.RootVersion = &v
 		log.Stats.Println("Ensure V1.5 for writing object & xref streams")
 	}
@@ -55,7 +55,7 @@ func MergeToBuf(filesIn []string, config *pdfcpu.Configuration) (*bytes.Buffer, 
 		return nil, err
 	}
 
-	err = ValidateContext(ctxDest)
+	err = pdfcpu.ValidateXRefTable(ctxDest.XRefTable)
 	if err != nil {
 		return nil, err
 	}
@@ -80,7 +80,7 @@ func MergeFileToBuf(files []*os.File, config *pdfcpu.Configuration) (*bytes.Buff
 	}
 
 	if ctxDest.XRefTable.Version() < pdfcpu.V15 {
-		v, _ := pdfcpu.PDFVersion("1.5")
+		v, _ := pdfcpu.Version("1.5")
 		ctxDest.XRefTable.RootVersion = &v
 		log.Stats.Println("Ensure V1.5 for writing object & xref streams")
 	}
@@ -98,7 +98,7 @@ func MergeFileToBuf(files []*os.File, config *pdfcpu.Configuration) (*bytes.Buff
 		return nil, err
 	}
 
-	err = ValidateContext(ctxDest)
+	err = pdfcpu.ValidateXRefTable(ctxDest.XRefTable)
 	if err != nil {
 		return nil, err
 	}
@@ -113,13 +113,13 @@ func MergeFileToBuf(files []*os.File, config *pdfcpu.Configuration) (*bytes.Buff
 	return b, nil
 }
 
-func readFileAndValidate(f *os.File, config *pdfcpu.Configuration) (ctx *pdfcpu.Context, err error) {
+func readFileAndValidate(f *os.File, config *pdfcpu.Configuration) (ctx *pdfcpu.PDFContext, err error) {
 	ctx, err = ReadFile(f, config)
 	if err != nil {
 		return nil, err
 	}
 
-	err = ValidateContext(ctx)
+	err = pdfcpu.ValidateXRefTable(ctx.XRefTable)
 	if err != nil {
 		return nil, err
 	}
@@ -127,9 +127,9 @@ func readFileAndValidate(f *os.File, config *pdfcpu.Configuration) (ctx *pdfcpu.
 	return ctx, nil
 }
 
-// ReadFile reads in a PDF file and builds an internal structure holding its cross reference table aka the Context.
-func ReadFile(f *os.File, config *pdfcpu.Configuration) (*pdfcpu.Context, error) {
-	ctx, err := pdfcpu.ParseFileToContext(f, config)
+// ReadFile reads in a PDF file and builds an internal structure holding its cross reference table aka the PDFContext.
+func ReadFile(f *os.File, config *pdfcpu.Configuration) (*pdfcpu.PDFContext, error) {
+	ctx, err := pdfcpu.ParseFileToPDFContext(f, config)
 	if err != nil {
 		return nil, errors.Wrap(err, "Read failed.")
 	}
@@ -138,11 +138,11 @@ func ReadFile(f *os.File, config *pdfcpu.Configuration) (*pdfcpu.Context, error)
 }
 
 // appendFileTo appends file to ctxDest's page tree.
-func appendFileTo(f *os.File, ctxDest *pdfcpu.Context) error {
+func appendFileTo(f *os.File, ctxDest *pdfcpu.PDFContext) error {
 
 	log.Stats.Printf("appendTo: appending %s to %s\n", f, ctxDest.Read.FileName)
 
-	// Build a Context for fileIn.
+	// Build a PDFContext for fileIn.
 	ctxSource, err := readFileAndValidate(f, ctxDest.Configuration)
 	if err != nil {
 		return err

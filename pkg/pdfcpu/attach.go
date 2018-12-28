@@ -1,32 +1,15 @@
-/*
-Copyright 2018 The pdfcpu Authors.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-	http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
-
 package pdfcpu
 
 import (
 	"io/ioutil"
 	"os"
-	"path/filepath"
 
-	"github.com/charleswklau/pdfcpu/pkg/filter"
-	"github.com/charleswklau/pdfcpu/pkg/log"
+	"github.com/mysilkway/pdfcpu/pkg/filter"
+	"github.com/mysilkway/pdfcpu/pkg/log"
 	"github.com/pkg/errors"
 )
 
-func decodedFileSpecStreamDict(xRefTable *XRefTable, fileName string, o Object) (*StreamDict, error) {
+func decodedFileSpecStreamDict(xRefTable *XRefTable, fileName string, o PDFObject) (*PDFStreamDict, error) {
 
 	d, err := xRefTable.DereferenceDict(o)
 	if err != nil {
@@ -86,9 +69,9 @@ func decodedFileSpecStreamDict(xRefTable *XRefTable, fileName string, o Object) 
 	return sd, nil
 }
 
-func extractAttachedFiles(ctx *Context, files StringSet) error {
+func extractAttachedFiles(ctx *PDFContext, files StringSet) error {
 
-	writeFile := func(xRefTable *XRefTable, fileName string, o Object) error {
+	writeFile := func(xRefTable *XRefTable, fileName string, o PDFObject) error {
 
 		path := ctx.Write.DirName + "/" + fileName
 
@@ -137,7 +120,7 @@ func extractAttachedFiles(ctx *Context, files StringSet) error {
 	return ctx.Names["EmbeddedFiles"].Process(ctx.XRefTable, writeFile)
 }
 
-func fileSpectDict(xRefTable *XRefTable, filename string) (*IndirectRef, error) {
+func fileSpectDict(xRefTable *XRefTable, filename string) (*PDFIndirectRef, error) {
 
 	sd, err := xRefTable.NewEmbeddedFileStreamDict(filename)
 	if err != nil {
@@ -149,17 +132,17 @@ func fileSpectDict(xRefTable *XRefTable, filename string) (*IndirectRef, error) 
 		return nil, err
 	}
 
-	ir, err := xRefTable.IndRefForNewObject(*sd)
+	indRef, err := xRefTable.IndRefForNewObject(*sd)
 	if err != nil {
 		return nil, err
 	}
 
-	d, err := xRefTable.NewFileSpecDict(filename, *ir)
+	dict, err := xRefTable.NewFileSpecDict(filename, *indRef)
 	if err != nil {
 		return nil, err
 	}
 
-	return xRefTable.IndRefForNewObject(d)
+	return xRefTable.IndRefForNewObject(*dict)
 }
 
 // ok returns true if at least one attachment was added.
@@ -173,14 +156,12 @@ func addAttachedFiles(xRefTable *XRefTable, files StringSet) (ok bool, err error
 
 	for fileName := range files {
 
-		ir, err := fileSpectDict(xRefTable, fileName)
+		indRef, err := fileSpectDict(xRefTable, fileName)
 		if err != nil {
 			return false, err
 		}
 
-		_, fn := filepath.Split(fileName)
-
-		xRefTable.Names["EmbeddedFiles"].Add(xRefTable, fn, *ir)
+		xRefTable.Names["EmbeddedFiles"].Add(xRefTable, fileName, *indRef)
 		if err != nil {
 			return false, err
 		}
@@ -197,55 +178,57 @@ func removeAttachedFiles(xRefTable *XRefTable, files StringSet) (ok bool, err er
 
 	log.Debug.Println("removeAttachedFiles begin")
 
-	// If no files specified, remove all embedded files.
-	if len(files) == 0 {
-		err = xRefTable.RemoveEmbeddedFilesNameTree()
-		if err != nil {
-			return false, err
-		}
-		return true, nil
-	}
+	if len(files) > 0 {
 
-	var removed bool
+		var removed bool
 
-	for fileName := range files {
+		for fileName := range files {
 
-		log.Debug.Printf("removeAttachedFiles: removing %s\n", fileName)
+			log.Debug.Printf("removeAttachedFiles: removing %s\n", fileName)
 
-		// Any remove operation may be deleting the only key value pair of this name tree.
-		if xRefTable.Names["EmbeddedFiles"] == nil {
-			//logErrorAttach.Printf("removeAttachedFiles: no attachments, can't remove %s\n", fileName)
-			continue
-		}
+			// Any remove operation may be deleting the only key value pair of this name tree.
+			if xRefTable.Names["EmbeddedFiles"] == nil {
+				//logErrorAttach.Printf("removeAttachedFiles: no attachments, can't remove %s\n", fileName)
+				continue
+			}
 
-		// EmbeddedFiles name tree containing at least one key value pair.
+			// EmbeddedFiles name tree containing at least one key value pair.
 
-		empty, ok, err := xRefTable.Names["EmbeddedFiles"].Remove(xRefTable, fileName)
-		if err != nil {
-			return false, err
-		}
-
-		if !ok {
-			log.Info.Printf("removeAttachedFiles: %s not found\n", fileName)
-			continue
-		}
-
-		log.Debug.Printf("removeAttachedFiles: removed key value pair for %s - empty=%t\n", fileName, empty)
-
-		if empty {
-			// Delete name tree root object.
-			// Clean up root.Names entry and delete if EmbeddedFiles was the only Names entry.
-			err = xRefTable.RemoveEmbeddedFilesNameTree()
+			empty, ok, err := xRefTable.Names["EmbeddedFiles"].Remove(xRefTable, fileName)
 			if err != nil {
 				return false, err
 			}
 
+			if !ok {
+				log.Info.Printf("removeAttachedFiles: %s not found\n", fileName)
+				continue
+			}
+
+			log.Debug.Printf("removeAttachedFiles: removed key value pair for %s - empty=%t\n", fileName, empty)
+
+			if empty {
+				// Delete name tree root object.
+				// Clean up root.Names entry and delete if EmbeddedFiles was the only Names entry.
+				err = xRefTable.RemoveEmbeddedFilesNameTree()
+				if err != nil {
+					return false, err
+				}
+
+			}
+
+			removed = true
 		}
 
-		removed = true
+		return removed, nil
 	}
 
-	return removed, nil
+	// If no files specified, remove all embedded files.
+	err = xRefTable.RemoveEmbeddedFilesNameTree()
+	if err != nil {
+		return false, err
+	}
+
+	return true, nil
 }
 
 // AttachList returns a list of embedded files.
@@ -253,7 +236,7 @@ func AttachList(xRefTable *XRefTable) (list []string, err error) {
 
 	log.Debug.Println("List begin")
 
-	if !xRefTable.Valid {
+	if !xRefTable.Valid && xRefTable.Names["EmbeddedFiles"] == nil {
 		err = xRefTable.LocateNameTree("EmbeddedFiles", false)
 		if err != nil {
 			return nil, err
@@ -276,11 +259,11 @@ func AttachList(xRefTable *XRefTable) (list []string, err error) {
 
 // AttachExtract exports specified embedded files.
 // If no files specified extract all embedded files.
-func AttachExtract(ctx *Context, files StringSet) (err error) {
+func AttachExtract(ctx *PDFContext, files StringSet) (err error) {
 
 	log.Debug.Println("Extract begin")
 
-	if !ctx.Valid {
+	if !ctx.Valid && ctx.Names["EmbeddedFiles"] == nil {
 		err = ctx.LocateNameTree("EmbeddedFiles", false)
 		if err != nil {
 			return err
@@ -308,9 +291,11 @@ func AttachAdd(xRefTable *XRefTable, files StringSet) (ok bool, err error) {
 
 	log.Debug.Println("Add begin")
 
-	err = xRefTable.LocateNameTree("EmbeddedFiles", true)
-	if err != nil {
-		return false, err
+	if xRefTable.Names["EmbeddedFiles"] == nil {
+		err := xRefTable.LocateNameTree("EmbeddedFiles", true)
+		if err != nil {
+			return false, err
+		}
 	}
 
 	ok, err = addAttachedFiles(xRefTable, files)
@@ -326,7 +311,7 @@ func AttachRemove(xRefTable *XRefTable, files StringSet) (ok bool, err error) {
 
 	log.Debug.Println("Remove begin")
 
-	if !xRefTable.Valid {
+	if !xRefTable.Valid && xRefTable.Names["EmbeddedFiles"] == nil {
 		err = xRefTable.LocateNameTree("EmbeddedFiles", false)
 		if err != nil {
 			return false, err

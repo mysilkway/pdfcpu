@@ -1,19 +1,3 @@
-/*
-Copyright 2018 The pdfcpu Authors.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-	http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
-
 package pdfcpu
 
 import (
@@ -73,7 +57,7 @@ func checkRemoveResult(t *testing.T, r *Node, k string, empty, ok bool, exp stri
 
 func buildNameTree(t *testing.T, r *Node) {
 
-	r.Add(nil, "b", StringLiteral("bv"))
+	r.Add(nil, "b", PDFStringLiteral("bv"))
 	checkAddResult(t, r, "[(b,(bv)){b,b}]", true)
 
 	_, ok, _ := r.Remove(nil, "x")
@@ -81,7 +65,7 @@ func buildNameTree(t *testing.T, r *Node) {
 		t.Fatal("should not be able to Remove x")
 	}
 
-	r.Add(nil, "f", StringLiteral("fv"))
+	r.Add(nil, "f", PDFStringLiteral("fv"))
 	checkAddResult(t, r, "[(b,(bv))(f,(fv)){b,f}]", true)
 
 	_, ok, _ = r.Remove(nil, "c")
@@ -89,7 +73,7 @@ func buildNameTree(t *testing.T, r *Node) {
 		t.Fatal("should not be able to Remove c")
 	}
 
-	r.Add(nil, "d", StringLiteral("dv"))
+	r.Add(nil, "d", PDFStringLiteral("dv"))
 	checkAddResult(t, r, "[(b,(bv))(d,(dv))(f,(fv)){b,f}]", true)
 
 	_, ok = r.Value("c")
@@ -97,16 +81,16 @@ func buildNameTree(t *testing.T, r *Node) {
 		t.Fatal("should not find Value for c")
 	}
 
-	r.Add(nil, "h", StringLiteral("hv"))
+	r.Add(nil, "h", PDFStringLiteral("hv"))
 	checkAddResult(t, r, "[(b,(bv))(d,(dv)){b,d}],[(f,(fv))(h,(hv)){f,h}]", false)
 
-	r.Add(nil, "a", StringLiteral("av"))
+	r.Add(nil, "a", PDFStringLiteral("av"))
 	checkAddResult(t, r, "[(a,(av))(b,(bv))(d,(dv)){a,d}],[(f,(fv))(h,(hv)){f,h}]", false)
 
-	r.Add(nil, "i", StringLiteral("iv"))
+	r.Add(nil, "i", PDFStringLiteral("iv"))
 	checkAddResult(t, r, "[(a,(av))(b,(bv))(d,(dv)){a,d}],[(f,(fv))(h,(hv))(i,(iv)){f,i}]", false)
 
-	r.Add(nil, "c", StringLiteral("cv"))
+	r.Add(nil, "c", PDFStringLiteral("cv"))
 	checkAddResult(t, r, "[(a,(av))(b,(bv)){a,b}],[(c,(cv))(d,(dv)){c,d}],[(f,(fv))(h,(hv))(i,(iv)){f,i}]", false)
 }
 
@@ -168,7 +152,7 @@ func destroyNameTreet(t *testing.T, r *Node) {
 		t.Fatal("should not find Value for x")
 	}
 
-	r.Add(nil, "c", StringLiteral("cvv"))
+	r.Add(nil, "c", PDFStringLiteral("cvv"))
 	l := r.String()
 	exp := "[(c,(cvv))(d,(dv)){c,d}]"
 	if l != exp {

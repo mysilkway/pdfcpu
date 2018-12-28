@@ -1,27 +1,11 @@
-/*
-Copyright 2018 The pdfcpu Authors.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-	http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
-
 package filter
 
 import (
 	"bytes"
 	"io"
 
-	"github.com/charleswklau/pdfcpu/lzw"
-	"github.com/charleswklau/pdfcpu/pkg/log"
+	"github.com/mysilkway/pdfcpu/pkg/compress/lzw"
+	"github.com/mysilkway/pdfcpu/pkg/log"
 	"github.com/pkg/errors"
 )
 
@@ -32,7 +16,7 @@ type lzwDecode struct {
 // Encode implements encoding for an LZWDecode filter.
 func (f lzwDecode) Encode(r io.Reader) (*bytes.Buffer, error) {
 
-	log.Trace.Println("EncodeLZW begin")
+	log.Debug.Println("EncodeLZW begin")
 
 	var b bytes.Buffer
 
@@ -48,7 +32,7 @@ func (f lzwDecode) Encode(r io.Reader) (*bytes.Buffer, error) {
 	if err != nil {
 		return nil, err
 	}
-	log.Trace.Printf("EncodeLZW end: %d bytes written\n", written)
+	log.Debug.Printf("EncodeLZW end: %d bytes written\n", written)
 
 	return &b, nil
 }
@@ -56,7 +40,7 @@ func (f lzwDecode) Encode(r io.Reader) (*bytes.Buffer, error) {
 // Decode implements decoding for an LZWDecode filter.
 func (f lzwDecode) Decode(r io.Reader) (*bytes.Buffer, error) {
 
-	log.Trace.Println("DecodeLZW begin")
+	log.Debug.Println("DecodeLZW begin")
 
 	p, found := f.parms["Predictor"]
 	if found && p > 1 {
@@ -76,7 +60,7 @@ func (f lzwDecode) Decode(r io.Reader) (*bytes.Buffer, error) {
 	if err != nil {
 		return nil, err
 	}
-	log.Trace.Printf("DecodeLZW: decoded %d bytes.\n", written)
+	log.Debug.Printf("DecodeLZW: decoded %d bytes.\n", written)
 
 	return &b, nil
 }

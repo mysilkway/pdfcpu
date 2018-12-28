@@ -1,33 +1,17 @@
-/*
-Copyright 2018 The pdfcpu Authors.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-	http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
-
 package pdfcpu
 
 import (
 	"bufio"
 	"fmt"
-	"io"
+	"os"
 	"sort"
 	"strings"
 
-	"github.com/charleswklau/pdfcpu/pkg/log"
+	"github.com/mysilkway/pdfcpu/pkg/log"
 )
 
-// Context represents an environment for processing PDF files.
-type Context struct {
+// PDFContext represents the context for processing PDF files.
+type PDFContext struct {
 	*Configuration
 	*XRefTable
 	Read     *ReadContext
@@ -35,17 +19,22 @@ type Context struct {
 	Write    *WriteContext
 }
 
-// NewContext initializes a new Context.
-func NewContext(rs io.ReadSeeker, fileName string, fileSize int64, config *Configuration) (*Context, error) {
+// NewPDFContext initializes a new PDFContext.
+func NewPDFContext(fileName string, file *os.File, config *Configuration) (*PDFContext, error) {
 
 	if config == nil {
 		config = NewDefaultConfiguration()
 	}
 
-	ctx := &Context{
+	fileInfo, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+
+	ctx := &PDFContext{
 		config,
 		newXRefTable(config.ValidationMode),
-		newReadContext(rs, fileName, fileSize),
+		newReadContext(fileName, file, fileInfo.Size()),
 		newOptimizationContext(),
 		NewWriteContext(config.Eol),
 	}
@@ -54,20 +43,20 @@ func NewContext(rs io.ReadSeeker, fileName string, fileSize int64, config *Confi
 }
 
 // ResetWriteContext prepares an existing WriteContext for a new file to be written.
-func (ctx *Context) ResetWriteContext() {
+func (ctx *PDFContext) ResetWriteContext() {
 
 	ctx.Write = NewWriteContext(ctx.Write.Eol)
 }
 
-func (ctx *Context) String() string {
+func (ctx *PDFContext) String() string {
 
 	var logStr []string
 
 	logStr = append(logStr, "*************************************************************************************************\n")
-	logStr = append(logStr, fmt.Sprintf("HeaderVersion: %s\n", ctx.HeaderVersion))
+	logStr = append(logStr, fmt.Sprintf("HeaderVersion: %s\n", VersionString(*ctx.HeaderVersion)))
 
 	if ctx.RootVersion != nil {
-		logStr = append(logStr, fmt.Sprintf("RootVersion: %s\n", ctx.RootVersion))
+		logStr = append(logStr, fmt.Sprintf("RootVersion: %s\n", VersionString(*ctx.RootVersion)))
 	}
 
 	logStr = append(logStr, fmt.Sprintf("has %d pages\n", ctx.PageCount))
@@ -101,7 +90,7 @@ func (ctx *Context) String() string {
 	}
 
 	if ctx.ID != nil {
-		logStr = append(logStr, fmt.Sprintf("                ID object: %s\n", ctx.ID))
+		logStr = append(logStr, fmt.Sprintf("                ID object: %s\n", *ctx.ID))
 	}
 
 	if ctx.Encrypt != nil {
@@ -112,7 +101,7 @@ func (ctx *Context) String() string {
 
 		var objectNumbers []string
 		for _, k := range *ctx.AdditionalStreams {
-			indRef, _ := k.(IndirectRef)
+			indRef, _ := k.(PDFIndirectRef)
 			objectNumbers = append(objectNumbers, fmt.Sprintf("%d", int(indRef.ObjectNumber)))
 		}
 		sort.Strings(objectNumbers)
@@ -149,26 +138,32 @@ func (ctx *Context) String() string {
 
 // ReadContext represents the context for reading a PDF file.
 type ReadContext struct {
-	FileName            string // The input PDF-File.
-	FileSize            int64
-	rs                  io.ReadSeeker
-	BinaryTotalSize     int64  // total stream data
-	BinaryImageSize     int64  // total image stream data
-	BinaryFontSize      int64  // total font stream data (fontfiles)
-	BinaryImageDuplSize int64  // total obsolet image stream data after optimization
-	BinaryFontDuplSize  int64  // total obsolet font stream data after optimization
-	Linearized          bool   // File is linearized.
-	Hybrid              bool   // File is a hybrid PDF file.
-	UsingObjectStreams  bool   // File is using object streams.
-	ObjectStreams       IntSet // All object numbers of any object streams found which need to be decoded.
-	UsingXRefStreams    bool   // File is using xref streams.
-	XRefStreams         IntSet // All object numbers of any xref streams found.
+
+	// The PDF-File which gets processed.
+	FileName string
+	File     *os.File
+	FileSize int64
+
+	BinaryTotalSize     int64 // total stream data
+	BinaryImageSize     int64 // total image stream data
+	BinaryFontSize      int64 // total font stream data (fontfiles)
+	BinaryImageDuplSize int64 // total obsolet image stream data after optimization
+	BinaryFontDuplSize  int64 // total obsolet font stream data after optimization
+
+	Linearized bool // File is linearized.
+	Hybrid     bool // File is a hybrid PDF file.
+
+	UsingObjectStreams bool   // File is using object streams.
+	ObjectStreams      IntSet // All object numbers of any object streams found which need to be decoded.
+
+	UsingXRefStreams bool   // File is using xref streams.
+	XRefStreams      IntSet // All object numbers of any xref streams found.
 }
 
-func newReadContext(rs io.ReadSeeker, fileName string, fileSize int64) *ReadContext {
+func newReadContext(fileName string, file *os.File, fileSize int64) *ReadContext {
 	return &ReadContext{
-		rs:            rs,
 		FileName:      fileName,
+		File:          file,
 		FileSize:      fileSize,
 		ObjectStreams: IntSet{},
 		XRefStreams:   IntSet{},
@@ -255,43 +250,36 @@ func (rc *ReadContext) LogStats(optimized bool) {
 	}
 }
 
-// ReadFileSize returns the size of the input file, if there is one.
-func (rc *ReadContext) ReadFileSize() int {
-	if rc == nil {
-		return 0
-	}
-	return int(rc.FileSize)
-}
-
 // OptimizationContext represents the context for the optimiziation of a PDF file.
 type OptimizationContext struct {
 
 	// Font section
-	PageFonts         []IntSet            // For each page a registry of font object numbers.
-	FontObjects       map[int]*FontObject // FontObject lookup table by font object number.
-	Fonts             map[string][]int    // All font object numbers registered for a font name.
-	DuplicateFonts    map[int]Dict        // Registry of duplicate font dicts.
-	DuplicateFontObjs IntSet              // The set of objects that represents the union of the object graphs of all duplicate font dicts.
+	PageFonts         []IntSet
+	FontObjects       map[int]*FontObject
+	Fonts             map[string][]int
+	DuplicateFontObjs IntSet
+	DuplicateFonts    map[int]*PDFDict
 
 	// Image section
-	PageImages         []IntSet             // For each page a registry of image object numbers.
-	ImageObjects       map[int]*ImageObject // ImageObject lookup table by image object number.
-	DuplicateImages    map[int]*StreamDict  // Registry of duplicate image dicts.
-	DuplicateImageObjs IntSet               // The set of objects that represents the union of the object graphs of all duplicate image dicts.
+	PageImages         []IntSet
+	ImageObjects       map[int]*ImageObject
+	DuplicateImageObjs IntSet
+	DuplicateImages    map[int]*PDFStreamDict
 
 	DuplicateInfoObjects IntSet // Possible result of manual info dict modification.
-	NonReferencedObjs    []int  // Objects that are not referenced.
+
+	NonReferencedObjs []int // Objects that are not referenced.
 }
 
 func newOptimizationContext() *OptimizationContext {
 	return &OptimizationContext{
 		FontObjects:          map[int]*FontObject{},
 		Fonts:                map[string][]int{},
-		DuplicateFonts:       map[int]Dict{},
 		DuplicateFontObjs:    IntSet{},
+		DuplicateFonts:       map[int]*PDFDict{},
 		ImageObjects:         map[int]*ImageObject{},
-		DuplicateImages:      map[int]*StreamDict{},
 		DuplicateImageObjs:   IntSet{},
+		DuplicateImages:      map[int]*PDFStreamDict{},
 		DuplicateInfoObjects: IntSet{},
 	}
 }
@@ -540,25 +528,31 @@ func (oc *OptimizationContext) collectImageInfo(logStr []string) []string {
 type WriteContext struct {
 
 	// The PDF-File which gets generated.
+	DirName  string
+	FileName string
+	FileSize int64
 	*bufio.Writer
-	DirName             string
-	FileName            string
-	FileSize            int64
-	Command             string        // The processing command in effect.
-	SelectedPages       IntSet        // For split, trim and extract.
-	BinaryTotalSize     int64         // total stream data, counts 100% all stream data written.
-	BinaryImageSize     int64         // total image stream data written = Read.BinaryImageSize.
-	BinaryFontSize      int64         // total font stream data (fontfiles) = copy of Read.BinaryFontSize.
-	Table               map[int]int64 // object write offsets
-	Offset              int64         // current write offset
-	WriteToObjectStream bool          // if true start to embed objects into object streams and obey ObjectStreamMaxObjects.
-	CurrentObjStream    *int          // if not nil, any new non-stream-object gets added to the object stream with this object number.
-	Eol                 string        // end of line char sequence
+
+	Command       string // command in effect.
+	ExtractPageNr int    // page to be generated for rendering a single-page/PDF.
+	ExtractPages  IntSet // pages to be generated for a trimmed PDF.
+
+	BinaryTotalSize int64 // total stream data, counts 100% all stream data written.
+	BinaryImageSize int64 // total image stream data written = Read.BinaryImageSize.
+	BinaryFontSize  int64 // total font stream data (fontfiles) = copy of Read.BinaryFontSize.
+
+	Table  map[int]int64 // object write offsets
+	Offset int64         // current write offset
+
+	WriteToObjectStream bool // if true start to embed objects into object streams and obey ObjectStreamMaxObjects.
+	CurrentObjStream    *int // if not nil, any new non-stream-object gets added to the object stream with this object number.
+
+	Eol string // end of line char sequence
 }
 
 // NewWriteContext returns a new WriteContext.
 func NewWriteContext(eol string) *WriteContext {
-	return &WriteContext{SelectedPages: IntSet{}, Table: map[int]int64{}, Eol: eol}
+	return &WriteContext{Table: map[int]int64{}, Eol: eol}
 }
 
 // SetWriteOffset saves the current write offset to the PDFDestination.
@@ -576,22 +570,22 @@ func (wc *WriteContext) HasWriteOffset(objNumber int) bool {
 // Don't confuse with pdfcpu commands, these are internal triggers.
 func (wc *WriteContext) ReducedFeatureSet() bool {
 	switch wc.Command {
-	case "Split", "Trim", "ExtractPages", "Merge", "Import":
+	case "Split", "Trim", "Merge":
 		return true
 	}
 	return false
 }
 
 // ExtractPage returns true if page i needs to be generated.
-// func (wc *WriteContext) ExtractPage(i int) bool {
+func (wc *WriteContext) ExtractPage(i int) bool {
 
-// 	if wc.ExtractPages == nil {
-// 		return false
-// 	}
+	if wc.ExtractPages == nil {
+		return false
+	}
 
-// 	return wc.ExtractPages[i]
+	return wc.ExtractPages[i]
 
-// }
+}
 
 // LogStats logs stats for written file.
 func (wc *WriteContext) LogStats() {

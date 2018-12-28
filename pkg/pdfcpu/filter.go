@@ -1,33 +1,16 @@
-/*
-Copyright 2018 The pdfcpu Authors.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-	http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
-
 package pdfcpu
 
 // See 7.4 for a list of the defined filters.
 
 import (
 	"bytes"
-	"encoding/hex"
 	"io"
 
-	"github.com/charleswklau/pdfcpu/pkg/filter"
-	"github.com/charleswklau/pdfcpu/pkg/log"
+	"github.com/mysilkway/pdfcpu/pkg/filter"
+	"github.com/mysilkway/pdfcpu/pkg/log"
 )
 
-func parmsForFilter(d Dict) map[string]int {
+func parmsForFilter(d *PDFDict) map[string]int {
 
 	m := map[string]int{}
 
@@ -35,44 +18,30 @@ func parmsForFilter(d Dict) map[string]int {
 		return m
 	}
 
-	for k, v := range d {
+	for k, v := range d.Dict {
 
-		i, ok := v.(Integer)
-		if ok {
-			m[k] = i.Value()
+		i, ok := v.(PDFInteger)
+		if !ok {
 			continue
 		}
-
-		// Encode boolean values: false -> 0, true -> 1
-		b, ok := v.(Boolean)
-		if ok {
-			m[k] = 0
-			if b.Value() {
-				m[k] = 1
-			}
-			continue
-		}
-
+		m[k] = i.Value()
 	}
 
 	return m
 }
 
 // encodeStream encodes stream dict data by applying its filter pipeline.
-func encodeStream(sd *StreamDict) error {
+func encodeStream(sd *PDFStreamDict) error {
 
-	log.Trace.Printf("encodeStream begin")
+	log.Debug.Printf("encodeStream begin")
 
 	// No filter specified, nothing to encode.
 	if sd.FilterPipeline == nil {
-		log.Trace.Println("encodeStream: returning uncompressed stream.")
+		log.Debug.Println("encodeStream: returning uncompressed stream.")
 		sd.Raw = sd.Content
 		streamLength := int64(len(sd.Raw))
 		sd.StreamLength = &streamLength
-		ok := sd.Insert("Length", Integer(streamLength))
-		if !ok {
-			sd.Update("Length", Integer(streamLength))
-		}
+		sd.Insert("Length", PDFInteger(streamLength))
 		return nil
 	}
 
@@ -85,9 +54,9 @@ func encodeStream(sd *StreamDict) error {
 	for _, f := range sd.FilterPipeline {
 
 		if f.DecodeParms != nil {
-			log.Trace.Printf("encodeStream: encoding filter:%s\ndecodeParms:%s\n", f.Name, f.DecodeParms)
+			log.Debug.Printf("encodeStream: encoding filter:%s\ndecodeParms:%s\n", f.Name, f.DecodeParms)
 		} else {
-			log.Trace.Printf("encodeStream: encoding filter:%s\n", f.Name)
+			log.Debug.Printf("encodeStream: encoding filter:%s\n", f.Name)
 		}
 
 		// make parms map[string]int
@@ -110,21 +79,17 @@ func encodeStream(sd *StreamDict) error {
 
 	streamLength := int64(len(sd.Raw))
 	sd.StreamLength = &streamLength
+	sd.Insert("Length", PDFInteger(streamLength))
 
-	ok := sd.Insert("Length", Integer(streamLength))
-	if !ok {
-		sd.Update("Length", Integer(streamLength))
-	}
-
-	log.Trace.Printf("encodeStream end")
+	log.Debug.Printf("encodeStream end")
 
 	return nil
 }
 
 // decodeStream decodes streamDict data by applying its filter pipeline.
-func decodeStream(sd *StreamDict) error {
+func decodeStream(sd *PDFStreamDict) error {
 
-	log.Trace.Printf("decodeStream begin \n%s\n", sd)
+	log.Debug.Printf("decodeStream begin \n%s\n", sd)
 
 	if sd.Content != nil {
 		// This stream has already been decoded.
@@ -134,7 +99,7 @@ func decodeStream(sd *StreamDict) error {
 	// No filter specified, nothing to decode.
 	if sd.FilterPipeline == nil {
 		sd.Content = sd.Raw
-		log.Trace.Printf("decodedStream returning %d(#%02x)bytes: \n%s\n", len(sd.Content), len(sd.Content), hex.Dump(sd.Content))
+		//fmt.Printf("decodedStream returning %d(#%02x)bytes: \n%s\n", len(sd.Content), len(sd.Content), hex.Dump(sd.Content))
 		return nil
 	}
 
@@ -149,9 +114,9 @@ func decodeStream(sd *StreamDict) error {
 	for _, f := range sd.FilterPipeline {
 
 		if f.DecodeParms != nil {
-			log.Trace.Printf("decodeStream: decoding filter:%s\ndecodeParms:%s\n", f.Name, f.DecodeParms)
+			log.Debug.Printf("decodeStream: decoding filter:%s\ndecodeParms:%s\n", f.Name, f.DecodeParms)
 		} else {
-			log.Trace.Printf("decodeStream: decoding filter:%s\n", f.Name)
+			log.Debug.Printf("decodeStream: decoding filter:%s\n", f.Name)
 		}
 
 		// make parms map[string]int
@@ -174,9 +139,9 @@ func decodeStream(sd *StreamDict) error {
 
 	sd.Content = c.Bytes()
 
-	log.Trace.Printf("decodedStream returning %d(#%02x)bytes: \n%s\n", len(sd.Content), len(sd.Content), hex.Dump(c.Bytes()))
+	//fmt.Printf("decodedStream returning %d(#%02x)bytes: \n%s\n", len(sd.Content), len(sd.Content), hex.Dump(c.Bytes()))
 
-	//log.Trace.Printf("decodeStream end")
+	log.Debug.Printf("decodeStream end")
 
 	return nil
 }
