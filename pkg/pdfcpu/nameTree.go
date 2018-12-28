@@ -1,10 +1,26 @@
+/*
+Copyright 2018 The pdfcpu Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+	http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package pdfcpu
 
 import (
 	"fmt"
 	"strings"
 
-	"github.com/mysilkway/pdfcpu/pkg/log"
+	"github.com/charleswklau/pdfcpu/pkg/log"
 )
 
 const maxEntries = 3
@@ -16,16 +32,16 @@ const maxEntries = 3
 // Once maxEntries has been reached a leaf node turns into an intermediary node with two kids,
 // which are leaf nodes each of them holding half of the sorted entries of the original leaf node.
 type Node struct {
-	Kids       []*Node         // Mirror of the name tree's Kids array.
-	Names      []entry         // Mirror of the name tree's Names array.
-	Kmin, Kmax string          // Mirror of the name tree's Limit array[Kmin,Kmax].
-	IndRef     *PDFIndirectRef // Pointer to the PDF object representing this name tree node.
+	Kids       []*Node // Mirror of the name tree's Kids array, an array of indirect references.
+	Names      []entry // Mirror of the name tree's Names array.
+	Kmin, Kmax string  // Mirror of the name tree's Limit array[Kmin,Kmax].
+	D          *Dict   // Pointer to the PDF dict representing this name tree node.
 }
 
 // entry is a key value pair.
 type entry struct {
 	k string
-	v PDFObject
+	v Object
 }
 
 func (n Node) leaf() bool {
@@ -48,7 +64,7 @@ func (n Node) withinLimits(k string) bool {
 }
 
 // Value returns the value given key
-func (n Node) Value(k string) (PDFObject, bool) {
+func (n Node) Value(k string) (Object, bool) {
 
 	if n.leaf() {
 
@@ -83,7 +99,7 @@ func (n Node) Value(k string) (PDFObject, bool) {
 }
 
 // AddToLeaf adds an entry to a leaf.
-func (n *Node) AddToLeaf(k string, v PDFObject) {
+func (n *Node) AddToLeaf(k string, v Object) {
 
 	if n.Names == nil {
 		n.Names = make([]entry, 0, maxEntries)
@@ -93,7 +109,12 @@ func (n *Node) AddToLeaf(k string, v PDFObject) {
 }
 
 // Add adds an entry to a name tree.
-func (n *Node) Add(xRefTable *XRefTable, k string, v PDFObject) error {
+func (n *Node) Add(xRefTable *XRefTable, k string, v Object) error {
+
+	// The values associated with the keys may be objects of any type.
+	// Stream objects shall be specified by indirect object references.
+	// Dictionary, array, and string objects should be specified by indirect object references.
+	// Other PDF objects (nulls, numbers, booleans, and names) should be specified as direct objects.
 
 	if n.Names == nil {
 		n.Names = make([]entry, 0, maxEntries)
@@ -308,7 +329,7 @@ func (n *Node) removeFromKids(xRefTable *XRefTable, k string) (ok bool, err erro
 			// This kid is now empty and needs to be removed.
 
 			if xRefTable != nil {
-				err := xRefTable.DeleteObjectGraph(*n.Kids[i].IndRef)
+				err = xRefTable.deleteObject(*kid.D)
 				if err != nil {
 					return false, err
 				}
@@ -335,7 +356,7 @@ func (n *Node) removeFromKids(xRefTable *XRefTable, k string) (ok bool, err erro
 				log.Debug.Println("removeFromKids: only 1 kid")
 
 				if xRefTable != nil {
-					err = xRefTable.DeleteObject(n.IndRef.ObjectNumber.Value())
+					err = xRefTable.deleteObject(*n.D)
 					if err != nil {
 						return false, err
 					}
@@ -344,7 +365,6 @@ func (n *Node) removeFromKids(xRefTable *XRefTable, k string) (ok bool, err erro
 				*n = *n.Kids[0]
 
 				log.Debug.Printf("removeFromKids: new n = %s\n", n)
-				log.Debug.Printf("removeFromKids: n.IndRef = %v\n", n.IndRef)
 
 				return true, nil
 			}
@@ -380,7 +400,7 @@ func (n *Node) Remove(xRefTable *XRefTable, k string) (empty, ok bool, err error
 }
 
 // Process traverses the nametree applying a handler to each entry (key-value pair).
-func (n Node) Process(xRefTable *XRefTable, handler func(*XRefTable, string, PDFObject) error) error {
+func (n Node) Process(xRefTable *XRefTable, handler func(*XRefTable, string, Object) error) error {
 
 	if !n.leaf() {
 		for _, v := range n.Kids {
@@ -407,7 +427,7 @@ func (n Node) KeyList() ([]string, error) {
 
 	list := []string{}
 
-	keys := func(xRefTable *XRefTable, k string, v PDFObject) error {
+	keys := func(xRefTable *XRefTable, k string, v Object) error {
 		list = append(list, k)
 		return nil
 	}

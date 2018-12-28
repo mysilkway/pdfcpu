@@ -1,3 +1,19 @@
+/*
+Copyright 2018 The pdfcpu Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+	http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package main
 
 import (
@@ -5,9 +21,12 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
 
-	"github.com/mysilkway/pdfcpu/pkg/api"
-	"github.com/mysilkway/pdfcpu/pkg/pdfcpu"
+	"github.com/charleswklau/pdfcpu/pkg/api"
+	"github.com/charleswklau/pdfcpu/pkg/pdfcpu"
 )
 
 func prepareValidateCommand(config *pdfcpu.Configuration) *api.Command {
@@ -61,7 +80,7 @@ func prepareOptimizeCommand(config *pdfcpu.Configuration) *api.Command {
 
 func prepareSplitCommand(config *pdfcpu.Configuration) *api.Command {
 
-	if len(flag.Args()) != 2 || pageSelection != "" {
+	if len(flag.Args()) < 2 || len(flag.Args()) > 3 || pageSelection != "" {
 		fmt.Fprintf(os.Stderr, "%s\n\n", usageSplit)
 		os.Exit(1)
 	}
@@ -71,7 +90,17 @@ func prepareSplitCommand(config *pdfcpu.Configuration) *api.Command {
 
 	dirnameOut := flag.Arg(1)
 
-	return api.SplitCommand(filenameIn, dirnameOut, config)
+	span := 1
+	var err error
+	if len(flag.Args()) == 3 {
+		span, err = strconv.Atoi(flag.Arg(2))
+		if err != nil || span < 1 {
+			fmt.Fprintln(os.Stderr, "split: span is a numeric value >= 1")
+			os.Exit(1)
+		}
+	}
+
+	return api.SplitCommand(filenameIn, dirnameOut, span, config)
 }
 
 func prepareMergeCommand(config *pdfcpu.Configuration) *api.Command {
@@ -96,11 +125,15 @@ func prepareMergeCommand(config *pdfcpu.Configuration) *api.Command {
 	return api.MergeCommand(filenamesIn, filenameOut, config)
 }
 
+func allowedExtracMode(s string) bool {
+
+	return mode == "image" || mode == "font" || mode == "page" || mode == "content" || mode == "meta" ||
+		mode == "i" || mode == "p" || mode == "c" || mode == "m"
+}
+
 func prepareExtractCommand(config *pdfcpu.Configuration) *api.Command {
 
-	if len(flag.Args()) != 2 || mode == "" ||
-		(mode != "image" && mode != "font" && mode != "page" && mode != "content") &&
-			(mode != "i" && mode != "p" && mode != "c") {
+	if len(flag.Args()) != 2 || mode == "" || !allowedExtracMode(mode) {
 		fmt.Fprintf(os.Stderr, "%s\n\n", usageExtract)
 		os.Exit(1)
 	}
@@ -130,6 +163,9 @@ func prepareExtractCommand(config *pdfcpu.Configuration) *api.Command {
 
 	case "content", "c":
 		cmd = api.ExtractContentCommand(filenameIn, dirnameOut, pages, config)
+
+	case "meta", "m":
+		cmd = api.ExtractMetadataCommand(filenameIn, dirnameOut, config)
 	}
 
 	return cmd
@@ -441,4 +477,136 @@ func prepareChangePasswordCommand(config *pdfcpu.Configuration, s string) *api.C
 	}
 
 	return cmd
+}
+
+func prepareWatermarksCommand(config *pdfcpu.Configuration, onTop bool) *api.Command {
+
+	if len(flag.Args()) < 2 || len(flag.Args()) > 3 {
+		s := usageWatermark
+		if onTop {
+			s = usageStamp
+		}
+		fmt.Fprintf(os.Stderr, "%s\n\n", s)
+		os.Exit(1)
+	}
+
+	pages, err := api.ParsePageSelection(pageSelection)
+	if err != nil {
+		log.Fatalf("problem with flag pageSelection: %v", err)
+	}
+
+	//fmt.Printf("details: <%s>\n", flag.Arg(0))
+	wm, err := pdfcpu.ParseWatermarkDetails(flag.Arg(0), onTop)
+	if err != nil {
+		log.Fatalf("%v", err)
+	}
+
+	filenameIn := flag.Arg(1)
+	ensurePdfExtension(filenameIn)
+
+	filenameOut := defaultFilenameOut(filenameIn)
+	if len(flag.Args()) == 3 {
+		filenameOut = flag.Arg(2)
+		ensurePdfExtension(filenameOut)
+	}
+
+	return api.AddWatermarksCommand(filenameIn, filenameOut, pages, wm, config)
+}
+
+func prepareAddStampsCommand(config *pdfcpu.Configuration) *api.Command {
+	return prepareWatermarksCommand(config, true)
+}
+
+func prepareAddWatermarksCommand(config *pdfcpu.Configuration) *api.Command {
+	return prepareWatermarksCommand(config, false)
+}
+
+func ensureImageExtension(filename string) {
+	s := strings.ToLower(filepath.Ext(filename))
+	if !pdfcpu.MemberOf(s, []string{".jpg", ".jpeg", ".png", ".tif", ".tiff", ".pdf"}) {
+		fmt.Fprintf(os.Stderr, "%s needs an image extension (.jpg, .jpeg, .png, .tif, .tiff)\n", filename)
+		os.Exit(1)
+	}
+}
+
+func prepareImportImagesCommand(config *pdfcpu.Configuration) *api.Command {
+
+	if len(flag.Args()) < 2 || pageSelection != "" {
+		fmt.Fprintf(os.Stderr, "%s\n\n", usageImportImages)
+		os.Exit(1)
+	}
+
+	filenameOut := flag.Arg(0)
+	if hasPdfExtension(filenameOut) {
+		// pdfcpu import outFile imageFile...
+		// No optional 'description' argument provided.
+		// We use the default import configuration.
+		imp := pdfcpu.DefaultImportConfig()
+		filenamesIn := []string{}
+		for i := 1; i < len(flag.Args()); i++ {
+			arg := flag.Arg(i)
+			ensureImageExtension(arg)
+			filenamesIn = append(filenamesIn, arg)
+		}
+		return api.ImportImagesCommand(filenamesIn, filenameOut, imp, config)
+	}
+
+	// pdfcpu import outFile imageFile
+	// Possibly unexpected 'description'
+	if len(flag.Args()) == 2 {
+		fmt.Fprintf(os.Stderr, "%s\n\n", usageImportImages)
+		os.Exit(1)
+	}
+
+	// pdfcpu import description outFile imageFile...
+	//fmt.Printf("details: <%s>\n", flag.Arg(0))
+	imp, err := pdfcpu.ParseImportDetails(flag.Arg(0))
+	if err != nil {
+		log.Fatalf("%v", err)
+	}
+	if imp == nil {
+		log.Fatal("missing import description")
+	}
+
+	filenameOut = flag.Arg(1)
+	ensurePdfExtension(filenameOut)
+
+	filenamesIn := []string{}
+	for i := 2; i < len(flag.Args()); i++ {
+		arg := flag.Args()[i]
+		ensureImageExtension(arg)
+		filenamesIn = append(filenamesIn, arg)
+	}
+
+	return api.ImportImagesCommand(filenamesIn, filenameOut, imp, config)
+}
+
+func abs(i int) int {
+	if i < 0 {
+		return -i
+	}
+	return i
+}
+
+func prepareRotateCommand(config *pdfcpu.Configuration) *api.Command {
+
+	if len(flag.Args()) < 2 {
+		fmt.Fprintf(os.Stderr, "%s\n\n", usageRotate)
+		os.Exit(1)
+	}
+
+	pages, err := api.ParsePageSelection(pageSelection)
+	if err != nil {
+		log.Fatalf("problem with flag pageSelection: %v", err)
+	}
+
+	filenameIn := flag.Arg(0)
+	ensurePdfExtension(filenameIn)
+
+	r, err := strconv.Atoi(flag.Arg(1))
+	if err != nil || abs(r)%90 > 0 {
+		log.Fatalf("rotation must be a multiple of 90: %s\n", flag.Arg(1))
+	}
+
+	return api.RotateCommand(filenameIn, r, pages, config)
 }

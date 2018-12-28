@@ -1,14 +1,27 @@
 package pdfcpu
 
 import (
-	"github.com/mysilkway/pdfcpu/pkg/log"
+	"bytes"
+	"github.com/charleswklau/pdfcpu/pkg/log"
 	"github.com/pkg/errors"
 	"os"
 )
 
-// ParseFileToPDFContext parses the File and generates a PDFContext, an in-memory representation containing a cross reference table.
-func ParseFileToPDFContext(file *os.File, config *Configuration) (*PDFContext, error) {
-	ctx, err := NewPDFContext("", file, config)
+// ParseFileToContext parses the File and generates a Context, an in-memory representation containing a cross reference table.
+func ParseFileToContext(file *os.File, config *Configuration) (*Context, error) {
+	fileInfo, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	buffer := make([]byte, fileInfo.Size())
+
+	// read file content to buffer
+	_, err = file.Read(buffer)
+	if err != nil {
+		return nil, err
+	}
+
+	ctx, err := NewContext(bytes.NewReader(buffer), fileInfo.Name(), fileInfo.Size(), config)
 	if err != nil {
 		return nil, err
 	}

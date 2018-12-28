@@ -1,105 +1,117 @@
+/*
+Copyright 2018 The pdfcpu Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+	http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package pdfcpu
 
 import (
-	"sort"
-
-	"github.com/mysilkway/pdfcpu/pkg/log"
+	"github.com/charleswklau/pdfcpu/pkg/log"
 )
 
-func patchIndRef(indRef *PDFIndirectRef, lookup map[int]int) {
-	i := indRef.ObjectNumber.Value()
-	indRef.ObjectNumber = PDFInteger(lookup[i])
+func patchIndRef(ir *IndirectRef, lookup map[int]int) {
+	i := ir.ObjectNumber.Value()
+	ir.ObjectNumber = Integer(lookup[i])
 }
 
-func patchObject(o PDFObject, lookup map[int]int) PDFObject {
+func patchObject(o Object, lookup map[int]int) Object {
 
-	log.Debug.Printf("patchObject before: %v\n", o)
+	log.Trace.Printf("patchObject before: %v\n", o)
 
-	var ob PDFObject
+	var ob Object
 
 	switch obj := o.(type) {
 
-	case PDFIndirectRef:
+	case IndirectRef:
 		patchIndRef(&obj, lookup)
 		ob = obj
 
-	case PDFDict:
-		patchDict(&obj, lookup)
+	case Dict:
+		patchDict(obj, lookup)
 		ob = obj
 
-	case PDFStreamDict:
-		patchDict(&obj.PDFDict, lookup)
+	case StreamDict:
+		patchDict(obj.Dict, lookup)
 		ob = obj
 
-	case PDFObjectStreamDict:
-		patchDict(&obj.PDFDict, lookup)
+	case ObjectStreamDict:
+		patchDict(obj.Dict, lookup)
 		ob = obj
 
-	case PDFXRefStreamDict:
-		patchDict(&obj.PDFDict, lookup)
+	case XRefStreamDict:
+		patchDict(obj.Dict, lookup)
 		ob = obj
 
-	case PDFArray:
-		patchArray(&obj, lookup)
+	case Array:
+		patchArray(obj, lookup)
 		ob = obj
 
 	}
 
-	log.Debug.Printf("patchObject end: %v\n", ob)
+	log.Trace.Printf("patchObject end: %v\n", ob)
 
 	return ob
 }
 
-func patchDict(dict *PDFDict, lookup map[int]int) {
+func patchDict(d Dict, lookup map[int]int) {
 
-	log.Debug.Printf("patchDict before: %v\n", dict)
+	log.Trace.Printf("patchDict before: %v\n", d)
 
-	for k, obj := range dict.Dict {
+	for k, obj := range d {
 		o := patchObject(obj, lookup)
 		if o != nil {
-			dict.Dict[k] = o
+			d[k] = o
 		}
 	}
 
-	log.Debug.Printf("patchDict after: %v\n", dict)
+	log.Trace.Printf("patchDict after: %v\n", d)
 }
 
-func patchArray(arr *PDFArray, lookup map[int]int) {
+func patchArray(a Array, lookup map[int]int) {
 
-	log.Debug.Printf("patchArray begin: %v\n", arr)
+	log.Trace.Printf("patchArray begin: %v\n", a)
 
-	for i, obj := range *arr {
+	for i, obj := range a {
 		o := patchObject(obj, lookup)
 		if o != nil {
-			(*arr)[i] = o
+			a[i] = o
 		}
 	}
 
-	log.Debug.Printf("patchArray end: %v\n", arr)
+	log.Trace.Printf("patchArray end: %v\n", a)
 }
 
-func sortedKeys(ctx *PDFContext) []int {
+func objNrsIntSet(ctx *Context) IntSet {
 
-	var keys []int
+	objNrs := IntSet{}
 
 	for k := range ctx.Table {
 		if k == 0 {
 			// obj#0 is always the head of the freelist.
 			continue
 		}
-		keys = append(keys, k)
+		objNrs[k] = true
 	}
 
-	sort.Ints(keys)
-
-	return keys
+	return objNrs
 }
 
-func lookupTable(keys []int, i int) map[int]int {
+func lookupTable(keys IntSet, i int) map[int]int {
 
 	m := map[int]int{}
 
-	for _, k := range keys {
+	for k := range keys {
 		m[k] = i
 		i++
 	}
@@ -107,6 +119,7 @@ func lookupTable(keys []int, i int) map[int]int {
 	return m
 }
 
+// Patch an IntSet of objNrs using lookup.
 func patchObjects(s IntSet, lookup map[int]int) IntSet {
 
 	t := IntSet{}
@@ -120,7 +133,7 @@ func patchObjects(s IntSet, lookup map[int]int) IntSet {
 	return t
 }
 
-func patchSourceObjectNumbers(ctxSource, ctxDest *PDFContext) {
+func patchSourceObjectNumbers(ctxSource, ctxDest *Context) {
 
 	log.Debug.Printf("patchSourceObjectNumbers: ctxSource: xRefTableSize:%d trailer.Size:%d - %s\n", len(ctxSource.Table), *ctxSource.Size, ctxSource.Read.FileName)
 	log.Debug.Printf("patchSourceObjectNumbers:   ctxDest: xRefTableSize:%d trailer.Size:%d - %s\n", len(ctxDest.Table), *ctxDest.Size, ctxDest.Read.FileName)
@@ -128,10 +141,11 @@ func patchSourceObjectNumbers(ctxSource, ctxDest *PDFContext) {
 	// Patch source xref tables obj numbers which are essentially the keys.
 	//logInfoMerge.Printf("Source XRefTable before:\n%s\n", ctxSource)
 
-	keys := sortedKeys(ctxSource)
+	objNrs := objNrsIntSet(ctxSource)
 
-	// Create lookup table for obj numbers.
-	lookup := lookupTable(keys, *ctxDest.Size)
+	// Create lookup table for object numbers.
+	// The first number is the successor of the last number in ctxDest.
+	lookup := lookupTable(objNrs, *ctxDest.Size)
 
 	// Patch pointer to root object
 	patchIndRef(ctxSource.Root, lookup)
@@ -150,7 +164,7 @@ func patchSourceObjectNumbers(ctxSource, ctxDest *PDFContext) {
 	}
 
 	// Patch all indRefs for xref table entries.
-	for _, k := range keys {
+	for k := range objNrs {
 
 		//logDebugMerge.Printf("patching obj #%d\n", k)
 
@@ -194,7 +208,7 @@ func patchSourceObjectNumbers(ctxSource, ctxDest *PDFContext) {
 	log.Debug.Printf("patchSourceObjectNumbers end")
 }
 
-func appendSourcePageTreeToDestPageTree(ctxSource, ctxDest *PDFContext) error {
+func appendSourcePageTreeToDestPageTree(ctxSource, ctxDest *Context) error {
 
 	log.Debug.Println("appendSourcePageTreeToDestPageTree begin")
 
@@ -214,17 +228,17 @@ func appendSourcePageTreeToDestPageTree(ctxSource, ctxDest *PDFContext) error {
 	pageTreeRootDictDest, _ := ctxDest.XRefTable.DereferenceDict(*indRefPageTreeRootDictDest)
 	pageCountDest := pageTreeRootDictDest.IntEntry("Count")
 
-	arr := pageTreeRootDictDest.PDFArrayEntry("Kids")
-	log.Debug.Printf("Kids before: %v\n", *arr)
+	a := pageTreeRootDictDest.ArrayEntry("Kids")
+	log.Debug.Printf("Kids before: %v\n", a)
 
 	pageTreeRootDictSource.Insert("Parent", *indRefPageTreeRootDictDest)
 
 	// The source page tree gets appended on to the dest page tree.
-	*arr = append(*arr, *indRefPageTreeRootDictSource)
-	log.Debug.Printf("Kids after: %v\n", *arr)
+	a = append(a, *indRefPageTreeRootDictSource)
+	log.Debug.Printf("Kids after: %v\n", a)
 
-	pageTreeRootDictDest.Update("Count", PDFInteger(*pageCountDest+*pageCountSource))
-	pageTreeRootDictDest.Update("Kids", *arr)
+	pageTreeRootDictDest.Update("Count", Integer(*pageCountDest+*pageCountSource))
+	pageTreeRootDictDest.Update("Kids", a)
 
 	ctxDest.PageCount += ctxSource.PageCount
 
@@ -233,7 +247,7 @@ func appendSourcePageTreeToDestPageTree(ctxSource, ctxDest *PDFContext) error {
 	return nil
 }
 
-func appendSourceObjectsToDest(ctxSource, ctxDest *PDFContext) {
+func appendSourceObjectsToDest(ctxSource, ctxDest *Context) {
 
 	log.Debug.Println("appendSourceObjectsToDest begin")
 
@@ -262,7 +276,7 @@ func mergeIntSets(src, dest IntSet) {
 	}
 }
 
-func mergeDuplicateObjNumberIntSets(ctxSource, ctxDest *PDFContext) {
+func mergeDuplicateObjNumberIntSets(ctxSource, ctxDest *Context) {
 
 	log.Debug.Println("mergeDuplicateObjNumberIntSets begin")
 
@@ -274,8 +288,8 @@ func mergeDuplicateObjNumberIntSets(ctxSource, ctxDest *PDFContext) {
 	log.Debug.Println("mergeDuplicateObjNumberIntSets end")
 }
 
-// MergeXRefTables merges PDFContext ctxSource into ctxDest by appending its page tree.
-func MergeXRefTables(ctxSource, ctxDest *PDFContext) (err error) {
+// MergeXRefTables merges Context ctxSource into ctxDest by appending its page tree.
+func MergeXRefTables(ctxSource, ctxDest *Context) (err error) {
 
 	// Sweep over ctxSource cross ref table and ensure valid object numbers in ctxDest's space.
 	patchSourceObjectNumbers(ctxSource, ctxDest)
