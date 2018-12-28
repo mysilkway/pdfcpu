@@ -1,22 +1,38 @@
+/*
+Copyright 2018 The pdfcpu Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+	http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package pdfcpu
 
 import (
 	"fmt"
 
-	"github.com/mysilkway/pdfcpu/pkg/filter"
-	"github.com/mysilkway/pdfcpu/pkg/log"
+	"github.com/charleswklau/pdfcpu/pkg/filter"
+	"github.com/charleswklau/pdfcpu/pkg/log"
 	"github.com/pkg/errors"
 )
 
 // PDFFilter represents a PDF stream filter object.
 type PDFFilter struct {
 	Name        string
-	DecodeParms *PDFDict
+	DecodeParms Dict
 }
 
-// PDFStreamDict represents a PDF stream dict object.
-type PDFStreamDict struct {
-	PDFDict
+// StreamDict represents a PDF stream dict object.
+type StreamDict struct {
+	Dict
 	StreamOffset      int64
 	StreamLength      *int64
 	StreamLengthObjNr *int
@@ -26,16 +42,24 @@ type PDFStreamDict struct {
 	IsPageContent     bool
 }
 
-// NewPDFStreamDict creates a new PDFStreamDict for given PDFDict, stream offset and length.
-func NewPDFStreamDict(pdfDict PDFDict, streamOffset int64, streamLength *int64, streamLengthObjNr *int,
-	filterPipeline []PDFFilter) PDFStreamDict {
-	return PDFStreamDict{pdfDict, streamOffset, streamLength, streamLengthObjNr, filterPipeline, nil, nil, false}
+// NewStreamDict creates a new PDFStreamDict for given PDFDict, stream offset and length.
+func NewStreamDict(d Dict, streamOffset int64, streamLength *int64, streamLengthObjNr *int, filterPipeline []PDFFilter) StreamDict {
+	return StreamDict{
+		d,
+		streamOffset,
+		streamLength,
+		streamLengthObjNr,
+		filterPipeline,
+		nil,
+		nil,
+		false,
+	}
 }
 
 // HasSoleFilterNamed returns true if there is exactly one filter defined for a stream dict.
-func (streamDict PDFStreamDict) HasSoleFilterNamed(filterName string) bool {
+func (sd StreamDict) HasSoleFilterNamed(filterName string) bool {
 
-	fpl := streamDict.FilterPipeline
+	fpl := sd.FilterPipeline
 	if fpl == nil {
 		return false
 	}
@@ -49,129 +73,96 @@ func (streamDict PDFStreamDict) HasSoleFilterNamed(filterName string) bool {
 	return soleFilter.Name == filterName
 }
 
-// PDFObjectStreamDict represents a object stream dictionary.
-type PDFObjectStreamDict struct {
-	PDFStreamDict
+// ObjectStreamDict represents a object stream dictionary.
+type ObjectStreamDict struct {
+	StreamDict
 	Prolog         []byte
 	ObjCount       int
 	FirstObjOffset int
-	ObjArray       PDFArray
+	ObjArray       Array
 }
 
-// NewPDFObjectStreamDict creates a new PDFObjectStreamDict object.
-func NewPDFObjectStreamDict() *PDFObjectStreamDict {
+// NewObjectStreamDict creates a new ObjectStreamDict object.
+func NewObjectStreamDict() *ObjectStreamDict {
 
-	streamDict := PDFStreamDict{PDFDict: NewPDFDict()}
+	sd := StreamDict{Dict: NewDict()}
+	sd.Insert("Type", Name("ObjStm"))
+	sd.Insert("Filter", Name(filter.Flate))
+	sd.FilterPipeline = []PDFFilter{{Name: filter.Flate, DecodeParms: nil}}
 
-	streamDict.Insert("Type", PDFName("ObjStm"))
-	streamDict.Insert("Filter", PDFName(filter.Flate))
-
-	streamDict.FilterPipeline = []PDFFilter{{Name: filter.Flate, DecodeParms: nil}}
-
-	return &PDFObjectStreamDict{PDFStreamDict: streamDict}
+	return &ObjectStreamDict{StreamDict: sd}
 }
 
-// IndexedObject returns the object at given index from a PDFObjectStreamDict.
-func (oStreamDict *PDFObjectStreamDict) IndexedObject(index int) (PDFObject, error) {
-	if oStreamDict.ObjArray == nil {
+// IndexedObject returns the object at given index from a ObjectStreamDict.
+func (osd *ObjectStreamDict) IndexedObject(index int) (Object, error) {
+	if osd.ObjArray == nil {
 		return nil, errors.Errorf("IndexedObject(%d): object not available", index)
 	}
-	return oStreamDict.ObjArray[index], nil
+	return osd.ObjArray[index], nil
 }
 
 // AddObject adds another object to this object stream.
 // Relies on decoded content!
-func (oStreamDict *PDFObjectStreamDict) AddObject(objNumber int, entry *XRefTableEntry) error {
+func (osd *ObjectStreamDict) AddObject(objNumber int, entry *XRefTableEntry) error {
 
-	offset := len(oStreamDict.Content)
+	offset := len(osd.Content)
 
 	s := ""
-	if oStreamDict.ObjCount > 0 {
+	if osd.ObjCount > 0 {
 		s = " "
 	}
 	s = s + fmt.Sprintf("%d %d", objNumber, offset)
 
-	oStreamDict.Prolog = append(oStreamDict.Prolog, []byte(s)...)
+	osd.Prolog = append(osd.Prolog, []byte(s)...)
 
-	var pdfString string
+	pdfString := entry.Object.PDFString()
+	osd.Content = append(osd.Content, []byte(pdfString)...)
 
-	switch obj := entry.Object.(type) {
+	osd.ObjCount++
 
-	case PDFDict:
-		pdfString = obj.PDFString()
-
-	case PDFArray:
-		pdfString = obj.PDFString()
-
-	case PDFInteger:
-		pdfString = obj.PDFString()
-
-	case PDFFloat:
-		pdfString = obj.PDFString()
-
-	case PDFStringLiteral:
-		pdfString = obj.PDFString()
-
-	case PDFHexLiteral:
-		pdfString = obj.PDFString()
-
-	case PDFBoolean:
-		pdfString = obj.PDFString()
-
-	case PDFName:
-		pdfString = obj.PDFString()
-
-	default:
-		return errors.Errorf("AddObject: undefined PDF object #%d\n", objNumber)
-
-	}
-
-	oStreamDict.Content = append(oStreamDict.Content, []byte(pdfString)...)
-	oStreamDict.ObjCount++
-
-	log.Debug.Printf("AddObject end : ObjCount:%d prolog = <%s> Content = <%s>\n", oStreamDict.ObjCount, oStreamDict.Prolog, oStreamDict.Content)
+	log.Trace.Printf("AddObject end : ObjCount:%d prolog = <%s> Content = <%s>\n", osd.ObjCount, osd.Prolog, osd.Content)
 
 	return nil
 }
 
 // Finalize prepares the final content of the objectstream.
-func (oStreamDict *PDFObjectStreamDict) Finalize() {
-	oStreamDict.Content = append(oStreamDict.Prolog, oStreamDict.Content...)
-	oStreamDict.FirstObjOffset = len(oStreamDict.Prolog)
-	log.Debug.Printf("Finalize : firstObjOffset:%d Content = <%s>\n", oStreamDict.FirstObjOffset, oStreamDict.Content)
+func (osd *ObjectStreamDict) Finalize() {
+	osd.Content = append(osd.Prolog, osd.Content...)
+	osd.FirstObjOffset = len(osd.Prolog)
+	log.Trace.Printf("Finalize : firstObjOffset:%d Content = <%s>\n", osd.FirstObjOffset, osd.Content)
 }
 
-// PDFXRefStreamDict represents a cross reference stream dictionary.
-type PDFXRefStreamDict struct {
-	PDFStreamDict
+// XRefStreamDict represents a cross reference stream dictionary.
+type XRefStreamDict struct {
+	StreamDict
 	Size           int
 	Objects        []int
 	W              [3]int
 	PreviousOffset *int64
 }
 
-// NewPDFXRefStreamDict creates a new PDFXRefStreamDict object.
-func NewPDFXRefStreamDict(ctx *PDFContext) *PDFXRefStreamDict {
+// NewXRefStreamDict creates a new PDFXRefStreamDict object.
+func NewXRefStreamDict(ctx *Context) *XRefStreamDict {
 
-	streamDict := PDFStreamDict{PDFDict: NewPDFDict()}
+	sd := StreamDict{Dict: NewDict()}
 
-	streamDict.Insert("Type", PDFName("XRef"))
-	streamDict.Insert("Filter", PDFName(filter.Flate))
-	streamDict.FilterPipeline = []PDFFilter{{Name: filter.Flate, DecodeParms: nil}}
+	sd.Insert("Type", Name("XRef"))
+	sd.Insert("Filter", Name(filter.Flate))
+	sd.FilterPipeline = []PDFFilter{{Name: filter.Flate, DecodeParms: nil}}
 
-	streamDict.Insert("Root", *ctx.Root)
+	sd.Insert("Root", *ctx.Root)
 
 	if ctx.Info != nil {
-		streamDict.Insert("Info", *ctx.Info)
+		sd.Insert("Info", *ctx.Info)
 	}
 
 	if ctx.ID != nil {
-		streamDict.Insert("ID", *ctx.ID)
+		sd.Insert("ID", ctx.ID)
 	}
 
 	if ctx.Encrypt != nil && ctx.EncKey != nil {
-		streamDict.Insert("Encrypt", *ctx.Encrypt)
+		sd.Insert("Encrypt", *ctx.Encrypt)
 	}
 
-	return &PDFXRefStreamDict{PDFStreamDict: streamDict}
+	return &XRefStreamDict{StreamDict: sd}
 }

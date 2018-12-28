@@ -1,22 +1,42 @@
+/*
+Copyright 2018 The pdfcpu Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+	http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package api
 
 import (
-	"github.com/mysilkway/pdfcpu/pkg/pdfcpu"
+	pdf "github.com/charleswklau/pdfcpu/pkg/pdfcpu"
 	"github.com/pkg/errors"
 )
 
 // Command represents an execution context.
 type Command struct {
-	Mode          pdfcpu.CommandMode    // VALIDATE  OPTIMIZE  SPLIT  MERGE  EXTRACT  TRIM  LISTATT ADDATT REMATT EXTATT  ENCRYPT  DECRYPT  CHANGEUPW  CHANGEOPW LISTP ADDP
-	InFile        *string               //    *         *        *      -       *      *      *       *       *      *       *        *         *          *       *     *
-	InFiles       []string              //    -         -        -      *       -      -      -       *       *      *       -        -         -          -       -     -
-	InDir         *string               //    -         -        -      -       -      -      -       -       -      -       -        -         -          -       -     -
-	OutFile       *string               //    -         *        -      *       -      *      -       -       -      -       *        *         *          *       -     -
-	OutDir        *string               //    -         -        *      -       *      -      -       -       -      *       -        -         -          -       -     -
-	PageSelection []string              //    -         -        -      -       *      *      -       -       -      -       -        -         -          -       -     -
-	Config        *pdfcpu.Configuration //    *         *        *      *       *      *      *       *       *      *       *        *         *          *       *     *
-	PWOld         *string               //    -         -        -      -       -      -      -       -       -      -       -        -         *          *       -     -
-	PWNew         *string               //    -         -        -      -       -      -      -       -       -      -       -        -         *          *       -     -
+	Mode          pdf.CommandMode    // VALIDATE  OPTIMIZE  SPLIT  MERGE  EXTRACT  TRIM  LISTATT ADDATT REMATT EXTATT  ENCRYPT  DECRYPT  CHANGEUPW  CHANGEOPW LISTP ADDP  WATERMARK  IMPORT  ROTATE
+	InFile        *string            //    *         *        *      -       *      *      *       *       *      *       *        *         *          *       *     *       *         -       *
+	InFiles       []string           //    -         -        -      *       -      -      -       *       *      *       -        -         -          -       -     -       -         *       -
+	InDir         *string            //    -         -        -      -       -      -      -       -       -      -       -        -         -          -       -     -       -         -       -
+	OutFile       *string            //    -         *        -      *       -      *      -       -       -      -       *        *         *          *       -     -       *         *       -
+	OutDir        *string            //    -         -        *      -       *      -      -       -       -      *       -        -         -          -       -     -       -         -       -
+	PageSelection []string           //    -         -        -      -       *      *      -       -       -      -       -        -         -          -       -     -       *         -       -
+	Config        *pdf.Configuration //    *         *        *      *       *      *      *       *       *      *       *        *         *          *       *     *       *         *       *
+	PWOld         *string            //    -         -        -      -       -      -      -       -       -      -       -        -         *          *       -     -       -         -       -
+	PWNew         *string            //    -         -        -      -       -      -      -       -       -      -       -        -         *          *       -     -       -         -       -
+	Watermark     *pdf.Watermark     //    -         -        -      -       -      -      -       -       -      -       -        -         -          -       -     -       -         -       -
+	Span          int                //    -         -        *      -       -      -      -       -       -      -       -        -         -          -       -     -       -         -       -
+	Import        *pdf.Import        //    -         -        -      -       -      -      -       -       -      -       -        -         -          -       -     -       -         *       -
+	Rotation      int                //    -         -        -      -       -      -      -       -       -      -       -        -         -          -       -     -       -         -       *
 }
 
 // Process executes a pdfcpu command.
@@ -31,198 +51,195 @@ func Process(cmd *Command) (out []string, err error) {
 
 	cmd.Config.Mode = cmd.Mode
 
-	switch cmd.Mode {
-
-	case pdfcpu.VALIDATE:
-		err = Validate(*cmd.InFile, cmd.Config)
-
-	case pdfcpu.OPTIMIZE:
-		err = Optimize(*cmd.InFile, *cmd.OutFile, cmd.Config)
-
-	case pdfcpu.SPLIT:
-		err = Split(*cmd.InFile, *cmd.OutDir, cmd.Config)
-
-	case pdfcpu.MERGE:
-		err = Merge(cmd.InFiles, *cmd.OutFile, cmd.Config)
-
-	case pdfcpu.EXTRACTIMAGES:
-		err = ExtractImages(*cmd.InFile, *cmd.OutDir, cmd.PageSelection, cmd.Config)
-
-	case pdfcpu.EXTRACTFONTS:
-		err = ExtractFonts(*cmd.InFile, *cmd.OutDir, cmd.PageSelection, cmd.Config)
-
-	case pdfcpu.EXTRACTPAGES:
-		err = ExtractPages(*cmd.InFile, *cmd.OutDir, cmd.PageSelection, cmd.Config)
-
-	case pdfcpu.EXTRACTCONTENT:
-		err = ExtractContent(*cmd.InFile, *cmd.OutDir, cmd.PageSelection, cmd.Config)
-
-	case pdfcpu.TRIM:
-		err = Trim(*cmd.InFile, *cmd.OutFile, cmd.PageSelection, cmd.Config)
-
-	case pdfcpu.LISTATTACHMENTS, pdfcpu.ADDATTACHMENTS, pdfcpu.REMOVEATTACHMENTS, pdfcpu.EXTRACTATTACHMENTS:
-		out, err = processAttachments(cmd)
-
-	case pdfcpu.ENCRYPT, pdfcpu.DECRYPT, pdfcpu.CHANGEUPW, pdfcpu.CHANGEOPW:
-		err = processEncryption(cmd)
-
-	case pdfcpu.LISTPERMISSIONS, pdfcpu.ADDPERMISSIONS:
-		out, err = processPermissions(cmd)
-
-	default:
-		err = errors.Errorf("Process: Unknown command mode %d\n", cmd.Mode)
+	for k, v := range map[pdf.CommandMode]func(cmd *Command) ([]string, error){
+		pdf.VALIDATE:           Validate,
+		pdf.OPTIMIZE:           Optimize,
+		pdf.SPLIT:              Split,
+		pdf.MERGE:              Merge,
+		pdf.EXTRACTIMAGES:      ExtractImages,
+		pdf.EXTRACTFONTS:       ExtractFonts,
+		pdf.EXTRACTPAGES:       ExtractPages,
+		pdf.EXTRACTCONTENT:     ExtractContent,
+		pdf.EXTRACTMETADATA:    ExtractMetadata,
+		pdf.TRIM:               Trim,
+		pdf.ADDWATERMARKS:      AddWatermarks,
+		pdf.LISTATTACHMENTS:    processAttachments,
+		pdf.ADDATTACHMENTS:     processAttachments,
+		pdf.REMOVEATTACHMENTS:  processAttachments,
+		pdf.EXTRACTATTACHMENTS: processAttachments,
+		pdf.ENCRYPT:            processEncryption,
+		pdf.DECRYPT:            processEncryption,
+		pdf.CHANGEUPW:          processEncryption,
+		pdf.CHANGEOPW:          processEncryption,
+		pdf.LISTPERMISSIONS:    processPermissions,
+		pdf.ADDPERMISSIONS:     processPermissions,
+		pdf.IMPORTIMAGES:       ImportImages,
+		pdf.ROTATE:             Rotate,
+	} {
+		if cmd.Mode == k {
+			return v(cmd)
+		}
 	}
 
-	return out, err
+	return nil, errors.Errorf("Process: Unknown command mode %d\n", cmd.Mode)
 }
 
-// ValidateCommand creates a new ValidateCommand.
-func ValidateCommand(pdfFileName string, config *pdfcpu.Configuration) *Command {
+// ValidateCommand creates a new command to validate a file.
+func ValidateCommand(pdfFileName string, config *pdf.Configuration) *Command {
 	return &Command{
-		Mode:   pdfcpu.VALIDATE,
+		Mode:   pdf.VALIDATE,
 		InFile: &pdfFileName,
 		Config: config}
 }
 
-// OptimizeCommand creates a new OptimizeCommand.
-func OptimizeCommand(pdfFileNameIn, pdfFileNameOut string, config *pdfcpu.Configuration) *Command {
+// OptimizeCommand creates a new command to optimize a file.
+func OptimizeCommand(pdfFileNameIn, pdfFileNameOut string, config *pdf.Configuration) *Command {
 	return &Command{
-		Mode:    pdfcpu.OPTIMIZE,
+		Mode:    pdf.OPTIMIZE,
 		InFile:  &pdfFileNameIn,
 		OutFile: &pdfFileNameOut,
 		Config:  config}
 }
 
-// SplitCommand creates a new SplitCommand.
-func SplitCommand(pdfFileNameIn, dirNameOut string, config *pdfcpu.Configuration) *Command {
+// SplitCommand creates a new command to split a file into single page file.
+func SplitCommand(pdfFileNameIn, dirNameOut string, span int, config *pdf.Configuration) *Command {
 	return &Command{
-		Mode:   pdfcpu.SPLIT,
+		Mode:   pdf.SPLIT,
 		InFile: &pdfFileNameIn,
 		OutDir: &dirNameOut,
+		Span:   span,
 		Config: config}
 }
 
-// MergeCommand creates a new MergeCommand.
-func MergeCommand(pdfFileNamesIn []string, pdfFileNameOut string, config *pdfcpu.Configuration) *Command {
+// MergeCommand creates a new command to merge files.
+func MergeCommand(pdfFileNamesIn []string, pdfFileNameOut string, config *pdf.Configuration) *Command {
 	return &Command{
-		Mode: pdfcpu.MERGE,
-		//InFile:  &pdfFileNameIn,
+		Mode:    pdf.MERGE,
 		InFiles: pdfFileNamesIn,
 		OutFile: &pdfFileNameOut,
 		Config:  config}
 }
 
-// ExtractImagesCommand creates a new ExtractImagesCommand.
+// ExtractImagesCommand creates a new command to extract embedded images.
+// (experimental
+func ExtractImagesCommand(pdfFileNameIn, dirNameOut string, pageSelection []string, config *pdf.Configuration) *Command {
+	return &Command{
+		Mode:          pdf.EXTRACTIMAGES,
+		InFile:        &pdfFileNameIn,
+		OutDir:        &dirNameOut,
+		PageSelection: pageSelection,
+		Config:        config}
+}
+
+// ExtractFontsCommand creates a new command to extract embedded fonts.
 // (experimental)
-func ExtractImagesCommand(pdfFileNameIn, dirNameOut string, pageSelection []string, config *pdfcpu.Configuration) *Command {
+func ExtractFontsCommand(pdfFileNameIn, dirNameOut string, pageSelection []string, config *pdf.Configuration) *Command {
 	return &Command{
-		Mode:          pdfcpu.EXTRACTIMAGES,
+		Mode:          pdf.EXTRACTFONTS,
 		InFile:        &pdfFileNameIn,
 		OutDir:        &dirNameOut,
 		PageSelection: pageSelection,
 		Config:        config}
 }
 
-// ExtractFontsCommand creates a new ExtractFontsCommand.
-// (experimental)
-func ExtractFontsCommand(pdfFileNameIn, dirNameOut string, pageSelection []string, config *pdfcpu.Configuration) *Command {
+// ExtractPagesCommand creates a new command to extract specific pages of a file.
+func ExtractPagesCommand(pdfFileNameIn, dirNameOut string, pageSelection []string, config *pdf.Configuration) *Command {
 	return &Command{
-		Mode:          pdfcpu.EXTRACTFONTS,
+		Mode:          pdf.EXTRACTPAGES,
 		InFile:        &pdfFileNameIn,
 		OutDir:        &dirNameOut,
 		PageSelection: pageSelection,
 		Config:        config}
 }
 
-// ExtractPagesCommand creates a new ExtractPagesCommand.
-func ExtractPagesCommand(pdfFileNameIn, dirNameOut string, pageSelection []string, config *pdfcpu.Configuration) *Command {
+// ExtractContentCommand creates a new command to extract page content streams.
+func ExtractContentCommand(pdfFileNameIn, dirNameOut string, pageSelection []string, config *pdf.Configuration) *Command {
 	return &Command{
-		Mode:          pdfcpu.EXTRACTPAGES,
+		Mode:          pdf.EXTRACTCONTENT,
 		InFile:        &pdfFileNameIn,
 		OutDir:        &dirNameOut,
 		PageSelection: pageSelection,
 		Config:        config}
 }
 
-// ExtractContentCommand creates a new ExtractContentCommand.
-func ExtractContentCommand(pdfFileNameIn, dirNameOut string, pageSelection []string, config *pdfcpu.Configuration) *Command {
+// ExtractMetadataCommand creates a new command to extract metadata streams.
+func ExtractMetadataCommand(pdfFileNameIn, dirNameOut string, config *pdf.Configuration) *Command {
 	return &Command{
-		Mode:          pdfcpu.EXTRACTCONTENT,
-		InFile:        &pdfFileNameIn,
-		OutDir:        &dirNameOut,
-		PageSelection: pageSelection,
-		Config:        config}
+		Mode:   pdf.EXTRACTMETADATA,
+		InFile: &pdfFileNameIn,
+		OutDir: &dirNameOut,
+		Config: config}
 }
 
-// TrimCommand creates a new TrimCommand.
-func TrimCommand(pdfFileNameIn, pdfFileNameOut string, pageSelection []string, config *pdfcpu.Configuration) *Command {
+// TrimCommand creates a new command to trim the pages of a file.
+func TrimCommand(pdfFileNameIn, pdfFileNameOut string, pageSelection []string, config *pdf.Configuration) *Command {
 	// A slice parameter may be called with nil => empty slice.
 	return &Command{
-		Mode:          pdfcpu.TRIM,
+		Mode:          pdf.TRIM,
 		InFile:        &pdfFileNameIn,
 		OutFile:       &pdfFileNameOut,
 		PageSelection: pageSelection,
 		Config:        config}
 }
 
-// ListAttachmentsCommand create a new ListAttachmentsCommand.
-func ListAttachmentsCommand(pdfFileNameIn string, config *pdfcpu.Configuration) *Command {
+// ListAttachmentsCommand create a new command to list attachments.
+func ListAttachmentsCommand(pdfFileNameIn string, config *pdf.Configuration) *Command {
 	return &Command{
-		Mode:   pdfcpu.LISTATTACHMENTS,
+		Mode:   pdf.LISTATTACHMENTS,
 		InFile: &pdfFileNameIn,
 		Config: config}
 }
 
-// AddAttachmentsCommand creates a new AddAttachmentsCommand.
-func AddAttachmentsCommand(pdfFileNameIn string, fileNamesIn []string, config *pdfcpu.Configuration) *Command {
+// AddAttachmentsCommand creates a new command to add attachments.
+func AddAttachmentsCommand(pdfFileNameIn string, fileNamesIn []string, config *pdf.Configuration) *Command {
 	return &Command{
-		Mode:    pdfcpu.ADDATTACHMENTS,
+		Mode:    pdf.ADDATTACHMENTS,
 		InFile:  &pdfFileNameIn,
 		InFiles: fileNamesIn,
 		Config:  config}
 }
 
-// RemoveAttachmentsCommand creates a new RemoveAttachmentsCommand.
-func RemoveAttachmentsCommand(pdfFileNameIn string, fileNamesIn []string, config *pdfcpu.Configuration) *Command {
+// RemoveAttachmentsCommand creates a new command to remove attachments.
+func RemoveAttachmentsCommand(pdfFileNameIn string, fileNamesIn []string, config *pdf.Configuration) *Command {
 	return &Command{
-		Mode:    pdfcpu.REMOVEATTACHMENTS,
+		Mode:    pdf.REMOVEATTACHMENTS,
 		InFile:  &pdfFileNameIn,
 		InFiles: fileNamesIn,
 		Config:  config}
 }
 
-// ExtractAttachmentsCommand creates a new ExtractAttachmentsCommand.
-func ExtractAttachmentsCommand(pdfFileNameIn, dirNameOut string, fileNamesIn []string, config *pdfcpu.Configuration) *Command {
+// ExtractAttachmentsCommand creates a new command to extract attachments.
+func ExtractAttachmentsCommand(pdfFileNameIn, dirNameOut string, fileNamesIn []string, config *pdf.Configuration) *Command {
 	return &Command{
-		Mode:    pdfcpu.EXTRACTATTACHMENTS,
+		Mode:    pdf.EXTRACTATTACHMENTS,
 		InFile:  &pdfFileNameIn,
 		OutDir:  &dirNameOut,
 		InFiles: fileNamesIn,
 		Config:  config}
 }
 
-// EncryptCommand creates a new EncryptCommand.
-func EncryptCommand(pdfFileNameIn, pdfFileNameOut string, config *pdfcpu.Configuration) *Command {
+// EncryptCommand creates a new command to encrypt a file.
+func EncryptCommand(pdfFileNameIn, pdfFileNameOut string, config *pdf.Configuration) *Command {
 	return &Command{
-		Mode:    pdfcpu.ENCRYPT,
+		Mode:    pdf.ENCRYPT,
 		InFile:  &pdfFileNameIn,
 		OutFile: &pdfFileNameOut,
 		Config:  config}
 }
 
-// DecryptCommand creates a new DecryptCommand.
-func DecryptCommand(pdfFileNameIn, pdfFileNameOut string, config *pdfcpu.Configuration) *Command {
+// DecryptCommand creates a new command to decrypt a file.
+func DecryptCommand(pdfFileNameIn, pdfFileNameOut string, config *pdf.Configuration) *Command {
 	return &Command{
-		Mode:    pdfcpu.DECRYPT,
+		Mode:    pdf.DECRYPT,
 		InFile:  &pdfFileNameIn,
 		OutFile: &pdfFileNameOut,
 		Config:  config}
 }
 
-// ChangeUserPWCommand creates a new ChangeUserPWCommand.
-func ChangeUserPWCommand(pdfFileNameIn, pdfFileNameOut string, config *pdfcpu.Configuration, pwOld, pwNew *string) *Command {
+// ChangeUserPWCommand creates a new command to change the user password.
+func ChangeUserPWCommand(pdfFileNameIn, pdfFileNameOut string, config *pdf.Configuration, pwOld, pwNew *string) *Command {
 	return &Command{
-		Mode:    pdfcpu.CHANGEUPW,
+		Mode:    pdf.CHANGEUPW,
 		InFile:  &pdfFileNameIn,
 		OutFile: &pdfFileNameOut,
 		Config:  config,
@@ -230,10 +247,10 @@ func ChangeUserPWCommand(pdfFileNameIn, pdfFileNameOut string, config *pdfcpu.Co
 		PWNew:   pwNew}
 }
 
-// ChangeOwnerPWCommand creates a new ChangeOwnerPWCommand.
-func ChangeOwnerPWCommand(pdfFileNameIn, pdfFileNameOut string, config *pdfcpu.Configuration, pwOld, pwNew *string) *Command {
+// ChangeOwnerPWCommand creates a new command to change the owner password.
+func ChangeOwnerPWCommand(pdfFileNameIn, pdfFileNameOut string, config *pdf.Configuration, pwOld, pwNew *string) *Command {
 	return &Command{
-		Mode:    pdfcpu.CHANGEOPW,
+		Mode:    pdf.CHANGEOPW,
 		InFile:  &pdfFileNameIn,
 		OutFile: &pdfFileNameOut,
 		Config:  config,
@@ -241,18 +258,18 @@ func ChangeOwnerPWCommand(pdfFileNameIn, pdfFileNameOut string, config *pdfcpu.C
 		PWNew:   pwNew}
 }
 
-// ListPermissionsCommand create a new ListPermissionsCommand.
-func ListPermissionsCommand(pdfFileNameIn string, config *pdfcpu.Configuration) *Command {
+// ListPermissionsCommand create a new command to list permissions.
+func ListPermissionsCommand(pdfFileNameIn string, config *pdf.Configuration) *Command {
 	return &Command{
-		Mode:   pdfcpu.LISTPERMISSIONS,
+		Mode:   pdf.LISTPERMISSIONS,
 		InFile: &pdfFileNameIn,
 		Config: config}
 }
 
-// AddPermissionsCommand creates a new AddPermissionsCommand.
-func AddPermissionsCommand(pdfFileNameIn string, config *pdfcpu.Configuration) *Command {
+// AddPermissionsCommand creates a new command to add permissions.
+func AddPermissionsCommand(pdfFileNameIn string, config *pdf.Configuration) *Command {
 	return &Command{
-		Mode:   pdfcpu.ADDPERMISSIONS,
+		Mode:   pdf.ADDPERMISSIONS,
 		InFile: &pdfFileNameIn,
 		Config: config}
 }
@@ -261,52 +278,83 @@ func processAttachments(cmd *Command) (out []string, err error) {
 
 	switch cmd.Mode {
 
-	case pdfcpu.LISTATTACHMENTS:
+	case pdf.LISTATTACHMENTS:
 		out, err = ListAttachments(*cmd.InFile, cmd.Config)
 
-	case pdfcpu.ADDATTACHMENTS:
+	case pdf.ADDATTACHMENTS:
 		err = AddAttachments(*cmd.InFile, cmd.InFiles, cmd.Config)
 
-	case pdfcpu.REMOVEATTACHMENTS:
+	case pdf.REMOVEATTACHMENTS:
 		err = RemoveAttachments(*cmd.InFile, cmd.InFiles, cmd.Config)
 
-	case pdfcpu.EXTRACTATTACHMENTS:
+	case pdf.EXTRACTATTACHMENTS:
 		err = ExtractAttachments(*cmd.InFile, *cmd.OutDir, cmd.InFiles, cmd.Config)
 	}
 
 	return out, err
 }
 
-func processEncryption(cmd *Command) (err error) {
+func processEncryption(cmd *Command) (out []string, err error) {
 
 	switch cmd.Mode {
 
-	case pdfcpu.ENCRYPT:
-		err = Encrypt(*cmd.InFile, *cmd.OutFile, cmd.Config)
+	case pdf.ENCRYPT:
+		return Encrypt(cmd)
 
-	case pdfcpu.DECRYPT:
-		err = Decrypt(*cmd.InFile, *cmd.OutFile, cmd.Config)
+	case pdf.DECRYPT:
+		return Decrypt(cmd)
 
-	case pdfcpu.CHANGEUPW:
-		err = ChangeUserPassword(*cmd.InFile, *cmd.OutFile, cmd.Config, cmd.PWOld, cmd.PWNew)
+	case pdf.CHANGEUPW:
+		return ChangeUserPassword(cmd)
 
-	case pdfcpu.CHANGEOPW:
-		err = ChangeOwnerPassword(*cmd.InFile, *cmd.OutFile, cmd.Config, cmd.PWOld, cmd.PWNew)
+	case pdf.CHANGEOPW:
+		return ChangeOwnerPassword(cmd)
 	}
 
-	return err
+	return nil, nil
 }
 
 func processPermissions(cmd *Command) (out []string, err error) {
 
 	switch cmd.Mode {
 
-	case pdfcpu.LISTPERMISSIONS:
+	case pdf.LISTPERMISSIONS:
 		out, err = ListPermissions(*cmd.InFile, cmd.Config)
 
-	case pdfcpu.ADDPERMISSIONS:
+	case pdf.ADDPERMISSIONS:
 		err = AddPermissions(*cmd.InFile, cmd.Config)
 	}
 
 	return out, err
+}
+
+// AddWatermarksCommand creates a new command to add Watermarks to a file.
+func AddWatermarksCommand(pdfFileNameIn, pdfFileNameOut string, pageSelection []string, wm *pdf.Watermark, config *pdf.Configuration) *Command {
+	return &Command{
+		Mode:          pdf.ADDWATERMARKS,
+		InFile:        &pdfFileNameIn,
+		OutFile:       &pdfFileNameOut,
+		PageSelection: pageSelection,
+		Watermark:     wm,
+		Config:        config}
+}
+
+// ImportImagesCommand creates a new command to import images.
+func ImportImagesCommand(imageFileNamesIn []string, pdfFileNameOut string, imp *pdf.Import, config *pdf.Configuration) *Command {
+	return &Command{
+		Mode:    pdf.IMPORTIMAGES,
+		InFiles: imageFileNamesIn,
+		OutFile: &pdfFileNameOut,
+		Import:  imp,
+		Config:  config}
+}
+
+// RotateCommand creates a new command to rotate pages.
+func RotateCommand(pdfFileNameIn string, rotation int, pageSelection []string, config *pdf.Configuration) *Command {
+	return &Command{
+		Mode:          pdf.ROTATE,
+		InFile:        &pdfFileNameIn,
+		PageSelection: pageSelection,
+		Rotation:      rotation,
+		Config:        config}
 }
