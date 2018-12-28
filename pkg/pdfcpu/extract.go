@@ -1,3 +1,19 @@
+/*
+Copyright 2018 The pdfcpu Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+	http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package pdfcpu
 
 import (
@@ -9,10 +25,10 @@ import (
 )
 
 // ExtractImageData extracts image data for objNr.
-// Supported imgTypes: DCTDecode, JPXDecode
-// Note: This is a naive implementation that just returns encoded image bytes.
-// Hence TODO: Implementation and usage of these filters: DCTDecode and JPXDecode.
-func ExtractImageData(ctx *PDFContext, objNr int) (*ImageObject, error) {
+// Supported imgTypes: FlateDecode, DCTDecode, JPXDecode
+// TODO: Implementation and usage of these filters: DCTDecode and JPXDecode.
+// TODO: Should an error be returned instead of nil, nil when filters are not supported?
+func ExtractImageData(ctx *Context, objNr int) (*ImageObject, error) {
 
 	imageObj := ctx.Optimize.ImageObjects[objNr]
 
@@ -35,10 +51,14 @@ func ExtractImageData(ctx *PDFContext, objNr int) (*ImageObject, error) {
 		return nil, nil
 	}
 
-	// Ignore imageMasks.
+	f := fpl[0].Name
+
+	// We do not extract imageMasks with the exception of CCITTDecoded images
 	if im := imageDict.BooleanEntry("ImageMask"); im != nil && *im {
-		log.Info.Printf("extractImageData: ignore obj# %d, imageMask\n", objNr)
-		return nil, nil
+		if f != filter.CCITTFax {
+			log.Info.Printf("extractImageData: ignore obj# %d, imageMask\n", objNr)
+			return nil, nil
+		}
 	}
 
 	// Ignore if image has a soft mask defined.
@@ -53,23 +73,31 @@ func ExtractImageData(ctx *PDFContext, objNr int) (*ImageObject, error) {
 		return nil, nil
 	}
 
-	switch fpl[0].Name {
+	// CCITTDecoded images sometimes don't have a ColorSpace attribute.
+	if f == filter.CCITTFax {
+		_, err := ctx.DereferenceDictEntry(imageDict.Dict, "ColorSpace")
+		if err != nil {
+			imageDict.InsertName("ColorSpace", DeviceGrayCS)
+		}
+	}
 
-	case filter.Flate:
-		imageObj.Extension = "png"
+	switch f {
+
+	case filter.Flate, filter.CCITTFax:
+		// If color space is CMYK then write .tif else write .png
 		err := decodeStream(imageDict)
 		if err != nil {
 			return nil, err
 		}
 
 	case filter.DCT:
-		imageObj.Extension = "jpg"
+		//imageObj.Extension = "jpg"
 
 	case filter.JPX:
-		imageObj.Extension = "jpx"
+		//imageObj.Extension = "jpx"
 
 	default:
-		log.Debug.Printf("extractImageData: ignore obj# %d filter neither \"DCTDecode\" nor \"JPXDecode\"\n%s", objNr, filters)
+		log.Debug.Printf("extractImageData: ignore obj# %d filter %s unsupported\n", objNr, filters)
 		return nil, nil
 	}
 
@@ -78,7 +106,7 @@ func ExtractImageData(ctx *PDFContext, objNr int) (*ImageObject, error) {
 
 // ExtractFontData extracts font data (the "fontfile") for objNr.
 // Supported fontTypes: TrueType
-func ExtractFontData(ctx *PDFContext, objNr int) (*FontObject, error) {
+func ExtractFontData(ctx *Context, objNr int) (*FontObject, error) {
 
 	fontObject := ctx.Optimize.FontObjects[objNr]
 
@@ -88,18 +116,18 @@ func ExtractFontData(ctx *PDFContext, objNr int) (*FontObject, error) {
 		return nil, nil
 	}
 
-	dict, err := fontDescriptor(ctx.XRefTable, fontObject.FontDict, objNr)
+	d, err := fontDescriptor(ctx.XRefTable, fontObject.FontDict, objNr)
 	if err != nil {
 		return nil, err
 	}
 
-	if dict == nil {
+	if d == nil {
 		log.Debug.Printf("extractFontData: ignoring obj#%d - no fontDescriptor available for font: %s\n", objNr, fontObject.FontName)
 		return nil, nil
 	}
 
-	indRef := fontDescriptorFontFileIndirectObjectRef(dict)
-	if indRef == nil {
+	ir := fontDescriptorFontFileIndirectObjectRef(d)
+	if ir == nil {
 		log.Debug.Printf("extractFontData: ignoring obj#%d - no font file available for font: %s\n", objNr, fontObject.FontName)
 		return nil, nil
 	}
@@ -112,7 +140,7 @@ func ExtractFontData(ctx *PDFContext, objNr int) (*FontObject, error) {
 		// ttf ... true type file
 		// ttc ... true type collection
 		// This is just me guessing..
-		sd, err := ctx.DereferenceStreamDict(*indRef)
+		sd, err := ctx.DereferenceStreamDict(*ir)
 		if err != nil {
 			return nil, err
 		}
@@ -140,17 +168,16 @@ func ExtractFontData(ctx *PDFContext, objNr int) (*FontObject, error) {
 	return fontObject, nil
 }
 
-// ExtractContentData extracts page content in PDF notation for objNr.
-func ExtractContentData(ctx *PDFContext, objNr int) (data []byte, err error) {
+// ExtractStreamData extracts the content of a stream dict for a specific objNr.
+func ExtractStreamData(ctx *Context, objNr int) (data []byte, err error) {
 
 	// Get object for objNr.
-	obj, err := ctx.FindObject(objNr)
+	o, err := ctx.FindObject(objNr)
 	if err != nil {
 		return nil, err
 	}
 
-	// Content stream must be a stream dict.
-	sd, err := ctx.DereferenceStreamDict(obj)
+	sd, err := ctx.DereferenceStreamDict(o)
 	if err != nil {
 		return nil, err
 	}
@@ -168,7 +195,7 @@ func ExtractContentData(ctx *PDFContext, objNr int) (data []byte, err error) {
 }
 
 // TextData extracts text out of the page content for objNr.
-// func TextData(ctx *PDFContext, objNr int) (data []byte, err error) {
+// func TextData(ctx *Context, objNr int) (data []byte, err error) {
 // 	// TODO
 // 	return nil, nil
 // }

@@ -1,3 +1,19 @@
+/*
+Copyright 2018 The pdfcpu Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+	http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 // Package filter contains PDF filter implementations.
 package filter
 
@@ -34,6 +50,8 @@ var (
 type Filter interface {
 	Encode(r io.Reader) (*bytes.Buffer, error)
 	Decode(r io.Reader) (*bytes.Buffer, error)
+	//Encode(r io.Reader, w io.Writer) error
+	//Decode(r io.Reader, w io.Writer) error
 }
 
 // NewFilter returns a filter for given filterName and an optional parameter dictionary.
@@ -56,9 +74,11 @@ func NewFilter(filterName string, parms map[string]int) (filter Filter, err erro
 	case Flate:
 		filter = flate{baseFilter{parms}}
 
-	// CCITTFax
-	// JBIG2
+	case CCITTFax:
+		filter = ccittDecode{baseFilter{parms}}
+
 	// DCT
+	// JBIG2
 	// JPX
 
 	default:
@@ -71,6 +91,7 @@ func NewFilter(filterName string, parms map[string]int) (filter Filter, err erro
 
 // List return the list of all supported PDF filters.
 func List() []string {
+	// Exclude CCITTFax, DCT, JBIG2 & JPX since they only makes sense in the context of image processing.
 	return []string{ASCII85, ASCIIHex, RunLength, LZW, Flate}
 }
 

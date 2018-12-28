@@ -1,3 +1,19 @@
+/*
+Copyright 2018 The pdfcpu Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+	http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package pdfcpu
 
 // Functions dealing with PDF encryption.
@@ -40,6 +56,7 @@ var (
 		EXTRACTFONTS:       {1, 0},
 		EXTRACTPAGES:       {1, 0},
 		EXTRACTCONTENT:     {1, 0},
+		EXTRACTMETADATA:    {1, 0},
 		TRIM:               {0, 1},
 		LISTATTACHMENTS:    {0, 0},
 		EXTRACTATTACHMENTS: {1, 0},
@@ -47,58 +64,59 @@ var (
 		REMOVEATTACHMENTS:  {0, 1},
 		LISTPERMISSIONS:    {0, 0},
 		ADDPERMISSIONS:     {0, 0},
+		ADDWATERMARKS:      {1, 0},
 	}
 )
 
 // NewEncryptDict creates a new EncryptDict using the standard security handler.
-func newEncryptDict(needAES, need128BitKey bool, permissions int16) *PDFDict {
+func newEncryptDict(needAES, need128BitKey bool, permissions int16) Dict {
 
-	d := NewPDFDict()
+	d := NewDict()
 
-	//d.Insert("Type", PDFName("Encrypt"))
+	//d.Insert("Type", Name("Encrypt"))
 
-	d.Insert("Filter", PDFName("Standard"))
+	d.Insert("Filter", Name("Standard"))
 
 	if need128BitKey {
-		d.Insert("Length", PDFInteger(128))
-		d.Insert("R", PDFInteger(4))
-		d.Insert("V", PDFInteger(4))
+		d.Insert("Length", Integer(128))
+		d.Insert("R", Integer(4))
+		d.Insert("V", Integer(4))
 	} else {
-		d.Insert("R", PDFInteger(2))
-		d.Insert("V", PDFInteger(1))
+		d.Insert("R", Integer(2))
+		d.Insert("V", Integer(1))
 	}
 
 	// Set user access permission flags.
-	d.Insert("P", PDFInteger(permissions))
+	d.Insert("P", Integer(permissions))
 
-	d.Insert("StmF", PDFName("StdCF"))
-	d.Insert("StrF", PDFName("StdCF"))
+	d.Insert("StmF", Name("StdCF"))
+	d.Insert("StrF", Name("StdCF"))
 
-	d1 := NewPDFDict()
-	d1.Insert("AuthEvent", PDFName("DocOpen"))
+	d1 := NewDict()
+	d1.Insert("AuthEvent", Name("DocOpen"))
 
 	if needAES {
-		d1.Insert("CFM", PDFName("AESV2"))
+		d1.Insert("CFM", Name("AESV2"))
 	} else {
-		d1.Insert("CFM", PDFName("V2"))
+		d1.Insert("CFM", Name("V2"))
 	}
 
 	if need128BitKey {
-		d1.Insert("Length", PDFInteger(16))
+		d1.Insert("Length", Integer(16))
 	} else {
-		d1.Insert("Length", PDFInteger(5))
+		d1.Insert("Length", Integer(5))
 	}
 
-	d2 := NewPDFDict()
+	d2 := NewDict()
 	d2.Insert("StdCF", d1)
 
 	d.Insert("CF", d2)
 
 	h := "0000000000000000000000000000000000000000000000000000000000000000"
-	d.Insert("U", PDFHexLiteral(h))
-	d.Insert("O", PDFHexLiteral(h))
+	d.Insert("U", HexLiteral(h))
+	d.Insert("O", HexLiteral(h))
 
-	return &d
+	return d
 }
 
 func encKey(userpw string, e *Enc) (key []byte) {
@@ -153,7 +171,7 @@ func encKey(userpw string, e *Enc) (key []byte) {
 }
 
 // ValidateUserPassword validates the user password aka document open password.
-func validateUserPassword(ctx *PDFContext) (ok bool, key []byte, err error) {
+func validateUserPassword(ctx *Context) (ok bool, key []byte, err error) {
 
 	// Alg.4/5 p63
 	// 4a/5a create encryption key using Alg.2 p61
@@ -208,7 +226,7 @@ func key(ownerpw, userpw string, r, l int) (key []byte) {
 }
 
 // O calculates the owner password digest.
-func o(ctx *PDFContext) ([]byte, error) {
+func o(ctx *Context) ([]byte, error) {
 
 	ownerpw := ctx.OwnerPW
 	userpw := ctx.UserPW
@@ -257,7 +275,7 @@ func o(ctx *PDFContext) ([]byte, error) {
 }
 
 // U calculates the user password digest.
-func u(ctx *PDFContext) (u []byte, key []byte, err error) {
+func u(ctx *Context) (u []byte, key []byte, err error) {
 
 	userpw := ctx.UserPW
 	//fmt.Printf("U userpw=ctx.UserPW=%s\n", userpw)
@@ -317,7 +335,7 @@ func u(ctx *PDFContext) (u []byte, key []byte, err error) {
 }
 
 // ValidateOwnerPassword validates the owner password aka change permissions password.
-func validateOwnerPassword(ctx *PDFContext) (ok bool, k []byte, err error) {
+func validateOwnerPassword(ctx *Context) (ok bool, k []byte, err error) {
 
 	ownerpw := ctx.OwnerPW
 	userpw := ctx.UserPW
@@ -376,7 +394,7 @@ func validateOwnerPassword(ctx *PDFContext) (ok bool, k []byte, err error) {
 }
 
 // SupportedCFEntry returns true if all entries found are supported.
-func supportedCFEntry(d *PDFDict) (bool, error) {
+func supportedCFEntry(d Dict) (bool, error) {
 
 	cfm := d.NameEntry("CFM")
 	if cfm != nil && *cfm != "V2" && *cfm != "AESV2" {
@@ -412,7 +430,7 @@ func perms(p int) (list []string) {
 }
 
 // Permissions returns a list of set permissions.
-func Permissions(ctx *PDFContext) (list []string) {
+func Permissions(ctx *Context) (list []string) {
 
 	if ctx.E == nil {
 		return append(list, "full access")
@@ -489,9 +507,9 @@ func hasNeededPermissions(mode CommandMode, enc *Enc) bool {
 	return true
 }
 
-func getV(dict *PDFDict) (*int, error) {
+func getV(d Dict) (*int, error) {
 
-	v := dict.IntEntry("V")
+	v := d.IntEntry("V")
 
 	if v == nil || (*v != 1 && *v != 2 && *v != 4) {
 		return nil, errors.Errorf("getV: \"V\" must be one of 1,2,4")
@@ -499,11 +517,11 @@ func getV(dict *PDFDict) (*int, error) {
 
 	return v, nil
 }
-func checkStmf(ctx *PDFContext, stmf *string, cfDict *PDFDict) error {
+func checkStmf(ctx *Context, stmf *string, cfDict Dict) error {
 
 	if stmf != nil && *stmf != "Identity" {
 
-		d := cfDict.PDFDictEntry(*stmf)
+		d := cfDict.DictEntry(*stmf)
 		if d == nil {
 			return errors.Errorf("checkStmf: entry \"%s\" missing in \"CF\"", *stmf)
 		}
@@ -518,9 +536,9 @@ func checkStmf(ctx *PDFContext, stmf *string, cfDict *PDFDict) error {
 	return nil
 }
 
-func checkV(ctx *PDFContext, dict *PDFDict) (*int, error) {
+func checkV(ctx *Context, d Dict) (*int, error) {
 
-	v, err := getV(dict)
+	v, err := getV(d)
 	if err != nil {
 		return nil, err
 	}
@@ -531,26 +549,26 @@ func checkV(ctx *PDFContext, dict *PDFDict) (*int, error) {
 	}
 
 	// CF
-	cfDict := dict.PDFDictEntry("CF")
+	cfDict := d.DictEntry("CF")
 	if cfDict == nil {
 		return nil, errors.Errorf("checkV: required entry \"CF\" missing.")
 	}
 
 	// StmF
-	stmf := dict.NameEntry("StmF")
+	stmf := d.NameEntry("StmF")
 	err = checkStmf(ctx, stmf, cfDict)
 	if err != nil {
 		return nil, err
 	}
 
 	// StrF
-	strf := dict.NameEntry("StrF")
+	strf := d.NameEntry("StrF")
 	if strf != nil && *strf != "Identity" {
-		d := cfDict.PDFDictEntry(*strf)
-		if d == nil {
+		d1 := cfDict.DictEntry(*strf)
+		if d1 == nil {
 			return nil, errors.Errorf("checkV: entry \"%s\" missing in \"CF\"", *strf)
 		}
-		aes, err := supportedCFEntry(d)
+		aes, err := supportedCFEntry(d1)
 		if err != nil {
 			return nil, errors.Wrapf(err, "checkV: unsupported \"%s\" entry in \"CF\"", *strf)
 		}
@@ -558,9 +576,9 @@ func checkV(ctx *PDFContext, dict *PDFDict) (*int, error) {
 	}
 
 	// EFF
-	eff := dict.NameEntry("EFF")
+	eff := d.NameEntry("EFF")
 	if eff != nil && *strf != "Identity" {
-		d := cfDict.PDFDictEntry(*eff)
+		d := cfDict.DictEntry(*eff)
 		if d == nil {
 			return nil, errors.Errorf("checkV: entry \"%s\" missing in \"CF\"", *eff)
 		}
@@ -574,9 +592,9 @@ func checkV(ctx *PDFContext, dict *PDFDict) (*int, error) {
 	return v, nil
 }
 
-func length(dict *PDFDict) (int, error) {
+func length(d Dict) (int, error) {
 
-	l := dict.IntEntry("Length")
+	l := d.IntEntry("Length")
 	if l == nil {
 		return 40, nil
 	}
@@ -588,9 +606,9 @@ func length(dict *PDFDict) (int, error) {
 	return *l, nil
 }
 
-func getR(dict *PDFDict) (int, error) {
+func getR(d Dict) (int, error) {
 
-	r := dict.IntEntry("R")
+	r := d.IntEntry("R")
 	if r == nil || (*r != 2 && *r != 3 && *r != 4) {
 		return 0, errors.New("getR: \"R\" must be 2,3,4")
 	}
@@ -600,39 +618,39 @@ func getR(dict *PDFDict) (int, error) {
 
 // SupportedEncryption returns true if used encryption is supported by pdfcpu
 // Also returns a pointer to a struct encapsulating used encryption.
-func supportedEncryption(ctx *PDFContext, dict *PDFDict) (*Enc, error) {
+func supportedEncryption(ctx *Context, d Dict) (*Enc, error) {
 
 	// Filter
-	filter := dict.NameEntry("Filter")
+	filter := d.NameEntry("Filter")
 	if filter == nil || *filter != "Standard" {
 		return nil, errors.New("unsupported encryption: filter must be \"Standard\"")
 	}
 
 	// SubFilter
-	if dict.NameEntry("SubFilter") != nil {
+	if d.NameEntry("SubFilter") != nil {
 		return nil, errors.New("unsupported encryption: \"SubFilter\" not supported")
 	}
 
 	// V
-	v, err := checkV(ctx, dict)
+	v, err := checkV(ctx, d)
 	if err != nil {
 		return nil, err
 	}
 
 	// Length
-	l, err := length(dict)
+	l, err := length(d)
 	if err != nil {
 		return nil, err
 	}
 
 	// R
-	r, err := getR(dict)
+	r, err := getR(d)
 	if err != nil {
 		return nil, err
 	}
 
 	// O
-	o, err := dict.StringEntryBytes("O")
+	o, err := d.StringEntryBytes("O")
 	if err != nil {
 		return nil, err
 	}
@@ -641,7 +659,7 @@ func supportedEncryption(ctx *PDFContext, dict *PDFDict) (*Enc, error) {
 	}
 
 	// U
-	u, err := dict.StringEntryBytes("U")
+	u, err := d.StringEntryBytes("U")
 	if err != nil {
 		return nil, err
 	}
@@ -650,14 +668,14 @@ func supportedEncryption(ctx *PDFContext, dict *PDFDict) (*Enc, error) {
 	}
 
 	// P
-	p := dict.IntEntry("P")
+	p := d.IntEntry("P")
 	if p == nil {
 		return nil, errors.New("unsupported encryption: required entry \"P\" missing")
 	}
 
 	// EncryptMetadata
 	encMeta := true
-	emd := dict.BooleanEntry("EncryptMetadata")
+	emd := d.BooleanEntry("EncryptMetadata")
 	if emd != nil {
 		encMeta = *emd
 	}
@@ -767,7 +785,7 @@ func applyRC4Cipher(b []byte, objNr, genNr int, key []byte, needAES bool) (*stri
 	return &s1, nil
 }
 
-func encrypt(m map[string]PDFObject, k string, v PDFObject, objNr, genNr int, key []byte, aes bool) error {
+func encrypt(m map[string]Object, k string, v Object, objNr, genNr int, key []byte, aes bool) error {
 
 	s, err := encryptDeepObject(v, objNr, genNr, key, aes)
 	if err != nil {
@@ -782,16 +800,16 @@ func encrypt(m map[string]PDFObject, k string, v PDFObject, objNr, genNr int, ke
 }
 
 // EncryptDeepObject recurses over non trivial PDF objects and encrypts all strings encountered.
-func encryptDeepObject(objIn PDFObject, objNr, genNr int, key []byte, aes bool) (*PDFStringLiteral, error) {
+func encryptDeepObject(objIn Object, objNr, genNr int, key []byte, aes bool) (*StringLiteral, error) {
 
-	_, ok := objIn.(PDFIndirectRef)
+	_, ok := objIn.(IndirectRef)
 	if ok {
 		return nil, nil
 	}
 
 	switch obj := objIn.(type) {
 
-	case PDFStreamDict:
+	case StreamDict:
 		for k, v := range obj.Dict {
 			err := encrypt(obj.Dict, k, v, objNr, genNr, key, aes)
 			if err != nil {
@@ -799,15 +817,15 @@ func encryptDeepObject(objIn PDFObject, objNr, genNr int, key []byte, aes bool) 
 			}
 		}
 
-	case PDFDict:
-		for k, v := range obj.Dict {
-			err := encrypt(obj.Dict, k, v, objNr, genNr, key, aes)
+	case Dict:
+		for k, v := range obj {
+			err := encrypt(obj, k, v, objNr, genNr, key, aes)
 			if err != nil {
 				return nil, err
 			}
 		}
 
-	case PDFArray:
+	case Array:
 		for i, v := range obj {
 			s, err := encryptDeepObject(v, objNr, genNr, key, aes)
 			if err != nil {
@@ -818,13 +836,13 @@ func encryptDeepObject(objIn PDFObject, objNr, genNr int, key []byte, aes bool) 
 			}
 		}
 
-	case PDFStringLiteral:
+	case StringLiteral:
 		s, err := encryptString(aes, obj.Value(), objNr, genNr, key)
 		if err != nil {
 			return nil, err
 		}
 
-		sl := PDFStringLiteral(*s)
+		sl := StringLiteral(*s)
 
 		return &sl, nil
 
@@ -836,27 +854,27 @@ func encryptDeepObject(objIn PDFObject, objNr, genNr int, key []byte, aes bool) 
 }
 
 // DecryptDeepObject recurses over non trivial PDF objects and decrypts all strings encountered.
-func decryptDeepObject(objIn PDFObject, objNr, genNr int, key []byte, aes bool) (*PDFStringLiteral, error) {
+func decryptDeepObject(objIn Object, objNr, genNr int, key []byte, aes bool) (*StringLiteral, error) {
 
-	_, ok := objIn.(PDFIndirectRef)
+	_, ok := objIn.(IndirectRef)
 	if ok {
 		return nil, nil
 	}
 
 	switch obj := objIn.(type) {
 
-	case PDFDict:
-		for k, v := range obj.Dict {
+	case Dict:
+		for k, v := range obj {
 			s, err := decryptDeepObject(v, objNr, genNr, key, aes)
 			if err != nil {
 				return nil, err
 			}
 			if s != nil {
-				obj.Dict[k] = *s
+				obj[k] = *s
 			}
 		}
 
-	case PDFArray:
+	case Array:
 		for i, v := range obj {
 			s, err := decryptDeepObject(v, objNr, genNr, key, aes)
 			if err != nil {
@@ -867,13 +885,13 @@ func decryptDeepObject(objIn PDFObject, objNr, genNr int, key []byte, aes bool) 
 			}
 		}
 
-	case PDFStringLiteral:
+	case StringLiteral:
 		s, err := decryptString(aes, obj.Value(), objNr, genNr, key)
 		if err != nil {
 			return nil, err
 		}
 
-		sl := PDFStringLiteral(*s)
+		sl := StringLiteral(*s)
 
 		return &sl, nil
 
@@ -1008,25 +1026,41 @@ func decryptAESBytes(b, key []byte) ([]byte, error) {
 	return data, nil
 }
 
-func fileID(ctx *PDFContext) PDFHexLiteral {
+func fileID(ctx *Context) (HexLiteral, error) {
 
 	// see also 14.4 File Identifiers.
 
+	// The calculation of the file identifier need not be reproducible;
+	// all that matters is that the identifier is likely to be unique.
+	// For example, two implementations of the preceding algorithm might use different formats for the current time,
+	// causing them to produce different file identifiers for the same file created at the same time,
+	// but the uniqueness of the identifier is not affected.
+
 	h := md5.New()
-	h.Write([]byte(time.Now().String())) // current timestamp.
-	//h.Write() file location - ignore, we don't have this.
-	h.Write([]byte(strconv.Itoa(int(ctx.Read.FileSize)))) // file size.
-	// h.Write(allValuesOfTheInfoDict) - ignore, does not make sense in this case because we patch the info dict.
+
+	// Current timestamp.
+	h.Write([]byte(time.Now().String()))
+
+	// File location - ignore, we don't have this.
+
+	// File size.
+	h.Write([]byte(strconv.Itoa(ctx.Read.ReadFileSize())))
+
+	// All values of the info dict which is assumed to be there at this point.
+	d, err := ctx.DereferenceDict(*ctx.Info)
+	if err != nil {
+		return "", err
+	}
+
+	for _, v := range d {
+		o, err := ctx.Dereference(v)
+		if err != nil {
+			return "", err
+		}
+		h.Write([]byte(o.String()))
+	}
+
 	m := h.Sum(nil)
 
-	return PDFHexLiteral(hex.EncodeToString(m))
-}
-
-// ID generates the ID element for this file.
-func id(ctx *PDFContext) *PDFArray {
-
-	// Generate a PDFArray for the ID element.
-
-	fid := fileID(ctx)
-	return &PDFArray{fid, fid}
+	return HexLiteral(hex.EncodeToString(m)), nil
 }
